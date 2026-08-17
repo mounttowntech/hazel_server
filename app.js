@@ -14,5 +14,8 @@ app.get("/", (req, res) => {
   });
 });
 
+// Routes
 
+app.use("/api/auth",require("./src/routes/authRoutes"));
+app.use("/api/categories",require("./src/routes/categoryRoutes"));
 module.exports = app;
