@@ -14,5 +14,7 @@ app.get("/", (req, res) => {
   });
 });
 
+// Routes
 
+app.use("/api/auth",require("./src/routes/authRoutes"));
 module.exports = app;
