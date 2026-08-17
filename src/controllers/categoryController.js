@@ -532,42 +532,42 @@ exports.updateCategory = async (req, res) => {
 // SOFT DELETE CATEGORY
 
 
-// exports.deleteCategory = async (req, res) => {
-//   try {
-//     const { id } = req.params;
+exports.deleteCategory = async (req, res) => {
+  try {
+    const { id } = req.params;
 
-//     const category = await Category.findOne({
-//       _id: id,
-//       isDeleted: false,
-//     });
+    const category = await Category.findOne({
+      _id: id,
+      isDeleted: false,
+    });
 
-//     if (!category) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Category not found",
-//       });
-//     }
+    if (!category) {
+      return res.status(404).json({
+        success: false,
+        message: "Category not found",
+      });
+    }
 
-//     category.isDeleted = true;
-//     category.deletedAt = new Date();
-//     category.deletedBy = getUserId(req);
+    category.isDeleted = true;
+    category.deletedAt = new Date();
+    category.deletedBy = getUserId(req);
 
-//     await category.save();
+    await category.save();
 
-//     return res.status(200).json({
-//       success: true,
-//       message: "Category deleted successfully",
-//     });
-//   } catch (error) {
-//     console.error("Delete category error:", error);
+    return res.status(200).json({
+      success: true,
+      message: "Category deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete category error:", error);
 
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to delete category",
-//       error: error.message,
-//     });
-//   }
-// };
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete category",
+      error: error.message,
+    });
+  }
+};
 
 // ==========================================================
 // RESTORE CATEGORY
@@ -616,46 +616,46 @@ exports.updateCategory = async (req, res) => {
 // PERMANENT DELETE
 // ==========================================================
 
-exports.deleteCategory = async (req, res) => {
-  try {
-    const { id } = req.params;
+// exports.deleteCategory = async (req, res) => {
+//   try {
+//     const { id } = req.params;
 
-    const category = await Category.findOne({
-      _id: id,
-      isDeleted: true,
-    });
+//     const category = await Category.findOne({
+//       _id: id,
+//       isDeleted: true,
+//     });
 
-    if (!category) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Deleted category not found. Only soft-deleted categories can be permanently deleted.",
-      });
-    }
+//     if (!category) {
+//       return res.status(404).json({
+//         success: false,
+//         message:
+//           "Deleted category not found. Only soft-deleted categories can be permanently deleted.",
+//       });
+//     }
 
-    // Delete image
-    if (category.image) {
-      deleteImage(category.image);
-    }
+//     // Delete image
+//     if (category.image) {
+//       deleteImage(category.image);
+//     }
 
-    await Category.deleteOne({
-      _id: id,
-    });
+//     await Category.deleteOne({
+//       _id: id,
+//     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Category permanently deleted",
-    });
-  } catch (error) {
-    console.error(
-      "Permanent delete category error:",
-      error
-    );
+//     return res.status(200).json({
+//       success: true,
+//       message: "Category permanently deleted",
+//     });
+//   } catch (error) {
+//     console.error(
+//       "Permanent delete category error:",
+//       error
+//     );
 
-    return res.status(500).json({
-      success: false,
-      message: "Failed to permanently delete category",
-      error: error.message,
-    });
-  }
-};
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to permanently delete category",
+//       error: error.message,
+//     });
+//   }
+// };
