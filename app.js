@@ -23,4 +23,5 @@ app.use("/api/brands",require("./src/routes/brandRoutes"));
 app.use("/api/lengths",require("./src/routes/lengthRoutes"));
 app.use("/api/neck-patterns",require("./src/routes/neckPatternRoutes"));
 app.use("/api/size",require("./src/routes/sizeRoutes"));
+app.use("/api/colors",require("./src/routes/colorRoutes"));
 module.exports = app;
