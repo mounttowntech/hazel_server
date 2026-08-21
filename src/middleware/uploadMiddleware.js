@@ -3,39 +3,52 @@ const path = require("path");
 const fs = require("fs");
 
 // ==========================================================
-// CREATE UPLOAD DIRECTORY
+// CREATE CATEGORY UPLOAD DIRECTORY
 // ==========================================================
 
-const uploadDir = path.join(__dirname, "../uploads/categories");
+const categoryUploadDir = path.join(
+  __dirname,
+  "../uploads/categories"
+);
 
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, {
+if (!fs.existsSync(categoryUploadDir)) {
+  fs.mkdirSync(categoryUploadDir, {
     recursive: true,
   });
 }
 
 // ==========================================================
-// STORAGE
+// CREATE PRODUCT UPLOAD DIRECTORY
 // ==========================================================
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadDir);
-  },
+const productUploadDir = path.join(
+  __dirname,
+  "../uploads/products"
+);
 
-  filename: function (req, file, cb) {
-    const uniqueName =
-      Date.now() +
-      "-" +
-      Math.round(Math.random() * 1e9) +
-      path.extname(file.originalname);
-
-    cb(null, uniqueName);
-  },
-});
+if (!fs.existsSync(productUploadDir)) {
+  fs.mkdirSync(productUploadDir, {
+    recursive: true,
+  });
+}
 
 // ==========================================================
-// FILE FILTER
+// CREATE PRODUCT VARIANT UPLOAD DIRECTORY
+// ==========================================================
+
+const productVariantUploadDir = path.join(
+  __dirname,
+  "../uploads/product-variants"
+);
+
+if (!fs.existsSync(productVariantUploadDir)) {
+  fs.mkdirSync(productVariantUploadDir, {
+    recursive: true,
+  });
+}
+
+// ==========================================================
+// COMMON FILE FILTER
 // ==========================================================
 
 const fileFilter = (req, file, cb) => {
@@ -45,7 +58,9 @@ const fileFilter = (req, file, cb) => {
     path.extname(file.originalname).toLowerCase()
   );
 
-  const mimeType = allowedTypes.test(file.mimetype);
+  const mimeType = allowedTypes.test(
+    file.mimetype
+  );
 
   if (extension && mimeType) {
     cb(null, true);
@@ -60,17 +75,115 @@ const fileFilter = (req, file, cb) => {
 };
 
 // ==========================================================
-// MULTER
+// CATEGORY STORAGE
+// ==========================================================
+
+const categoryStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, categoryUploadDir);
+  },
+
+  filename: function (req, file, cb) {
+    const uniqueName =
+      Date.now() +
+      "-" +
+      Math.round(Math.random() * 1e9) +
+      path.extname(file.originalname);
+
+    cb(null, uniqueName);
+  },
+});
+
+// ==========================================================
+// PRODUCT STORAGE
+// ==========================================================
+
+const productStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, productUploadDir);
+  },
+
+  filename: function (req, file, cb) {
+    const uniqueName =
+      Date.now() +
+      "-" +
+      Math.round(Math.random() * 1e9) +
+      path.extname(file.originalname);
+
+    cb(null, uniqueName);
+  },
+});
+
+// ==========================================================
+// PRODUCT VARIANT STORAGE
+// ==========================================================
+
+const productVariantStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, productVariantUploadDir);
+  },
+
+  filename: function (req, file, cb) {
+    const uniqueName =
+      Date.now() +
+      "-" +
+      Math.round(Math.random() * 1e9) +
+      path.extname(file.originalname);
+
+    cb(null, uniqueName);
+  },
+});
+
+// ==========================================================
+// CATEGORY UPLOAD
 // ==========================================================
 
 const uploadCategoryImage = multer({
-  storage,
+  storage: categoryStorage,
+
   fileFilter,
+
   limits: {
     fileSize: 5 * 1024 * 1024,
   },
 });
 
+// ==========================================================
+// PRODUCT UPLOAD
+// ==========================================================
+
+const uploadProductImage = multer({
+  storage: productStorage,
+
+  fileFilter,
+
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 10,
+  },
+});
+
+// ==========================================================
+// PRODUCT VARIANT UPLOAD
+// ==========================================================
+
+const uploadProductVariantImage = multer({
+  storage: productVariantStorage,
+
+  fileFilter,
+
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 10,
+  },
+});
+
+// ==========================================================
+// EXPORT
+// ==========================================================
+
 module.exports = {
   uploadCategoryImage,
+  uploadProductImage,
+  uploadProductVariantImage,
 };
