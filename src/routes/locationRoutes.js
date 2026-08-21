@@ -4,14 +4,13 @@ const router =
   express.Router();
 
 const {
-  createAddress,
-  getAddresses,
-  getAddressById,
-  updateAddress,
-  deleteAddress,
-  setDefaultAddress,
+  saveLocation,
+  getCurrentLocation,
+  getLocations,
+  getLocationById,
+  deleteLocation,
 } = require(
-  "../controllers/addressController"
+  "../controllers/locationController"
 );
 
 const {
@@ -21,69 +20,58 @@ const {
 );
 
 // ==========================================================
-// CREATE ADDRESS
-// POST /api/addresses
+// SAVE CURRENT LOCATION
+// POST /api/locations
 // ==========================================================
 
 router.post(
   "/create",
   verifyToken,
-  createAddress
+  saveLocation
 );
 
 // ==========================================================
-// GET ALL ADDRESSES
-// GET /api/addresses
+// GET CURRENT LOCATION
+// GET /api/locations/current
+// ==========================================================
+
+router.get(
+  "/current",
+  verifyToken,
+  getCurrentLocation
+);
+
+// ==========================================================
+// GET ALL LOCATIONS
+// GET /api/locations
 // ==========================================================
 
 router.get(
   "/all",
   verifyToken,
-  getAddresses
+  getLocations
 );
 
 // ==========================================================
-// GET ADDRESS BY ID
-// GET /api/addresses/:id
+// GET LOCATION BY ID
+// GET /api/locations/:id
 // ==========================================================
 
 router.get(
   "/:id",
   verifyToken,
-  getAddressById
+  getLocationById
 );
 
 // ==========================================================
-// UPDATE ADDRESS
-// PUT /api/addresses/:id
-// ==========================================================
-
-router.put(
-  "/update/:id",
-  verifyToken,
-  updateAddress
-);
-
-// ==========================================================
-// DELETE ADDRESS
-// DELETE /api/addresses/:id
+// DELETE LOCATION
+// DELETE /api/locations/:id
 // ==========================================================
 
 router.delete(
   "/delete/:id",
   verifyToken,
-  deleteAddress
-);
-
-// ==========================================================
-// SET DEFAULT ADDRESS
-// PATCH /api/addresses/:id/default
-// ==========================================================
-
-router.patch(
-  "/:id/default",
-  verifyToken,
-  setDefaultAddress
+  deleteLocation
 );
 
 module.exports = router;
