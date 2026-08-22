@@ -5,19 +5,30 @@ const userSchema = new mongoose.Schema(
     name: {
       type: String,
       trim: true,
+      default: null,
     },
 
     mobileNumber: {
       type: String,
-      required: true,
       unique: true,
+      sparse: true,
       trim: true,
+      default: null,
     },
 
     email: {
       type: String,
       lowercase: true,
       trim: true,
+      unique: true,
+      sparse: true,
+      default: null,
+    },
+
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
       default: null,
     },
 
