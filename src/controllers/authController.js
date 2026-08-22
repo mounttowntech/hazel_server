@@ -1,9 +1,18 @@
 const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
 
 const User = require("../models/userModel");
 const OTP = require("../models/OTPModel");
 
 const otpService = require("../services/OTPService");
+
+// ============================================================
+// GOOGLE CLIENT
+// ============================================================
+
+const googleClient = new OAuth2Client(
+  process.env.GOOGLE_CLIENT_ID
+);
 
 // ============================================================
 // GENERATE JWT
@@ -14,7 +23,8 @@ const generateToken = (user) => {
     {
       id: user._id,
       role: user.role,
-      mobileNumber: user.mobileNumber,
+      mobileNumber: user.mobileNumber || null,
+      email: user.email || null,
     },
     process.env.JWT_SECRET,
     {
@@ -94,12 +104,11 @@ exports.sendOTP = async (req, res) => {
     // ----------------------------------------------------------
     // 5. Development Response
     // ----------------------------------------------------------
-    // OTP is returned only for development/testing.
-    // Remove otp from response in production.
 
     return res.status(200).json({
       success: true,
       message: "OTP generated successfully.",
+
       ...(process.env.NODE_ENV !== "production" && {
         otp: otpResult.otp,
         expiresAt: otpResult.expiresAt,
@@ -351,7 +360,7 @@ exports.verifyOTP = async (req, res) => {
       user: {
         id: user._id,
         name: user.name || null,
-        mobileNumber: user.mobileNumber,
+        mobileNumber: user.mobileNumber || null,
         email: user.email || null,
         role: user.role,
         profileImage: user.profileImage || null,
@@ -451,13 +460,259 @@ exports.resendOTP = async (req, res) => {
   }
 };
 
+// ============================================================
+// GOOGLE SIGN-IN
+// ============================================================
+
+exports.googleSignIn = async (req, res) => {
+  try {
+    const { credential } = req.body;
+
+    // ----------------------------------------------------------
+    // 1. Check Google Credential
+    // ----------------------------------------------------------
+
+    if (!credential) {
+      return res.status(400).json({
+        success: false,
+        message: "Google credential is required.",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // 2. Verify Google ID Token
+    // ----------------------------------------------------------
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    // ----------------------------------------------------------
+    // 3. Get Google Payload
+    // ----------------------------------------------------------
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Google credential.",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // 4. Get Google User Information
+    // ----------------------------------------------------------
+
+    const googleId = payload.sub;
+
+    const email = payload.email
+      ? payload.email.toLowerCase().trim()
+      : null;
+
+    const name = payload.name || null;
+
+    const profileImage =
+      payload.picture || null;
+
+    const emailVerified =
+      payload.email_verified;
+
+    // ----------------------------------------------------------
+    // 5. Validate Google Information
+    // ----------------------------------------------------------
+
+    if (!googleId || !email) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Unable to get required Google account information.",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // 6. Check Email Verification
+    // ----------------------------------------------------------
+
+    if (!emailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Google email is not verified.",
+      });
+    }
+
+    // ----------------------------------------------------------
+    // 7. Find Existing User
+    //
+    // First check googleId.
+    // Then check email.
+    // ----------------------------------------------------------
+
+    let user = await User.findOne({
+      $or: [
+        {
+          googleId: googleId,
+        },
+        {
+          email: email,
+        },
+      ],
+    });
+
+    // ----------------------------------------------------------
+    // 8. Create New Google Customer
+    // ----------------------------------------------------------
+
+    if (!user) {
+      user = await User.create({
+        name: name,
+
+        // Google does not provide mobile number
+        mobileNumber: null,
+
+        email: email,
+
+        googleId: googleId,
+
+        profileImage: profileImage,
+
+        role: "customer",
+
+        isVerified: true,
+
+        isActive: true,
+
+        lastLoginAt: new Date(),
+      });
+    }
+
+    // ----------------------------------------------------------
+    // 9. Existing User
+    // ----------------------------------------------------------
+
+    else {
+      // --------------------------------------------------------
+      // Check Active Status
+      // --------------------------------------------------------
+
+      if (!user.isActive) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Your account is inactive. Please contact support.",
+        });
+      }
+
+      // --------------------------------------------------------
+      // Link Google Account
+      // --------------------------------------------------------
+
+      if (!user.googleId) {
+        user.googleId = googleId;
+      }
+
+      // --------------------------------------------------------
+      // Update Email
+      // --------------------------------------------------------
+
+      if (!user.email) {
+        user.email = email;
+      }
+
+      // --------------------------------------------------------
+      // Update Name
+      // --------------------------------------------------------
+
+      if (!user.name && name) {
+        user.name = name;
+      }
+
+      // --------------------------------------------------------
+      // Update Profile Image
+      // --------------------------------------------------------
+
+      if (!user.profileImage && profileImage) {
+        user.profileImage = profileImage;
+      }
+
+      // --------------------------------------------------------
+      // Mark User Verified
+      // --------------------------------------------------------
+
+      user.isVerified = true;
+
+      // --------------------------------------------------------
+      // Update Last Login
+      // --------------------------------------------------------
+
+      user.lastLoginAt = new Date();
+
+      await user.save();
+    }
+
+    // ----------------------------------------------------------
+    // 10. Generate Your Application JWT
+    // ----------------------------------------------------------
+
+    const token = generateToken(user);
+
+    // ----------------------------------------------------------
+    // 11. Return Login Response
+    // ----------------------------------------------------------
+
+    return res.status(200).json({
+      success: true,
+      message: "Google sign-in successful.",
+
+      token,
+
+      user: {
+        id: user._id,
+        name: user.name || null,
+        mobileNumber:
+          user.mobileNumber || null,
+        email: user.email || null,
+        role: user.role,
+        profileImage:
+          user.profileImage || null,
+        isVerified: user.isVerified,
+        isActive: user.isActive,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "GOOGLE SIGN-IN ERROR:",
+      error
+    );
+
+    return res.status(401).json({
+      success: false,
+      message: "Google authentication failed.",
+      error:
+        process.env.NODE_ENV !== "production"
+          ? error.message
+          : undefined,
+    });
+  }
+};
+
+// ============================================================
+// UPDATE PROFILE
+// ============================================================
+
 exports.updateProfile = async (req, res) => {
   try {
-    const userId = req.user.id || req.user._id;
+    const userId =
+      req.user.id || req.user._id;
 
-    const { name, email } = req.body;
+    const {
+      name,
+      email,
+    } = req.body;
 
-    const user = await User.findById(userId);
+    const user =
+      await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
@@ -466,44 +721,70 @@ exports.updateProfile = async (req, res) => {
       });
     }
 
+    // ----------------------------------------------------------
+    // Update Name
+    // ----------------------------------------------------------
+
     if (name !== undefined) {
       user.name = name;
     }
+
+    // ----------------------------------------------------------
+    // Update Email
+    // ----------------------------------------------------------
 
     if (email !== undefined) {
       user.email = email;
     }
 
-    if (req.body.profileImage !== undefined) {
-      user.profileImage = req.body.profileImage;
+    // ----------------------------------------------------------
+    // Update Profile Image
+    // ----------------------------------------------------------
+
+    if (
+      req.body.profileImage !== undefined
+    ) {
+      user.profileImage =
+        req.body.profileImage;
     }
 
     await user.save();
 
     return res.status(200).json({
       success: true,
-      message: "Profile updated successfully",
+      message:
+        "Profile updated successfully",
+
       user: {
         id: user._id,
         name: user.name,
-        mobileNumber: user.mobileNumber,
+        mobileNumber:
+          user.mobileNumber,
         email: user.email,
         role: user.role,
-        profileImage: user.profileImage,
-        isVerified: user.isVerified,
-        isActive: user.isActive,
+        profileImage:
+          user.profileImage,
+        isVerified:
+          user.isVerified,
+        isActive:
+          user.isActive,
       },
     });
   } catch (error) {
-    console.error("Update Profile Error:", error);
+    console.error(
+      "Update Profile Error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to update profile",
+      message:
+        "Failed to update profile",
       error: error.message,
     });
   }
 };
+
 // ============================================================
 // GET CURRENT USER
 // ============================================================
@@ -522,15 +803,20 @@ exports.getMe = async (req, res) => {
     }
 
     // ----------------------------------------------------------
-    // Fetch Latest User
+    // Get User ID
     // ----------------------------------------------------------
 
     const userId =
-      req.user._id || req.user.id;
+      req.user._id ||
+      req.user.id;
 
-    const user = await User.findById(userId).select(
-      "-password"
-    );
+    // ----------------------------------------------------------
+    // Fetch User
+    // ----------------------------------------------------------
+
+    const user =
+      await User.findById(userId)
+        .select("-password");
 
     if (!user) {
       return res.status(404).json({
@@ -557,19 +843,27 @@ exports.getMe = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+
       user: {
         id: user._id,
         name: user.name || null,
-        mobileNumber: user.mobileNumber,
+        mobileNumber:
+          user.mobileNumber || null,
         email: user.email || null,
         role: user.role,
-        profileImage: user.profileImage || null,
-        isVerified: user.isVerified,
-        isActive: user.isActive,
+        profileImage:
+          user.profileImage || null,
+        isVerified:
+          user.isVerified,
+        isActive:
+          user.isActive,
       },
     });
   } catch (error) {
-    console.error("GET ME ERROR:", error);
+    console.error(
+      "GET ME ERROR:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
@@ -607,11 +901,15 @@ exports.logout = async (req, res) => {
       message: "Logout successful.",
     });
   } catch (error) {
-    console.error("LOGOUT ERROR:", error);
+    console.error(
+      "LOGOUT ERROR:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Unable to logout.",
+      message:
+        "Unable to logout.",
       error:
         process.env.NODE_ENV !== "production"
           ? error.message
