@@ -9,87 +9,65 @@ const {
   getRecentOrders,
   getTopSellingProducts,
   getInventoryStatus,
-  getRecentActivities
+  getRecentActivities,
 } = require("../controllers/dashboardController");
 
 // ============================================================
 // COMPLETE DASHBOARD
+// GET /api/dashboard
 // ============================================================
 
-// GET /api/dashboard
-router.get(
-  "/all",
-  getDashboard
-);
+router.get("/", getDashboard);
+
+// ============================================================
+// COMPLETE DASHBOARD - OPTIONAL ALIAS
+// GET /api/dashboard/all
+// ============================================================
+
+router.get("/all", getDashboard);
 
 // ============================================================
 // DASHBOARD SUMMARY
+// GET /api/dashboard/summary
 // ============================================================
 
-// GET /api/dashboard/summary
-router.get(
-  "/summary",
-  getDashboardSummary
-);
+router.get("/summary", getDashboardSummary);
 
 // ============================================================
 // SALES OVERVIEW
-// ============================================================
-
 // GET /api/dashboard/sales-overview?range=today
 // GET /api/dashboard/sales-overview?range=week
 // GET /api/dashboard/sales-overview?range=month
+// ============================================================
 
-router.get(
-  "/sales-overview",
-  getSalesOverview
-);
+router.get("/sales-overview", getSalesOverview);
 
 // ============================================================
 // RECENT ORDERS
+// GET /api/dashboard/recent-orders
 // ============================================================
 
-// GET /api/dashboard/recent-orders
-// GET /api/dashboard/recent-orders?limit=5
-
-router.get(
-  "/recent-orders",
-  getRecentOrders
-);
+router.get("/recent-orders", getRecentOrders);
 
 // ============================================================
 // TOP SELLING PRODUCTS
+// GET /api/dashboard/top-products
 // ============================================================
 
-// GET /api/dashboard/top-products
-// GET /api/dashboard/top-products?limit=5
-
-router.get(
-  "/top-products",
-  getTopSellingProducts
-);
+router.get("/top-products", getTopSellingProducts);
 
 // ============================================================
 // INVENTORY STATUS
+// GET /api/dashboard/inventory
 // ============================================================
 
-// GET /api/dashboard/inventory
-
-router.get(
-  "/inventory",
-  getInventoryStatus
-);
+router.get("/inventory", getInventoryStatus);
 
 // ============================================================
 // RECENT ACTIVITIES
+// GET /api/dashboard/activities
 // ============================================================
 
-// GET /api/dashboard/activities
-// GET /api/dashboard/activities?limit=10
-
-router.get(
-  "/activities",
-  getRecentActivities
-);
+router.get("/activities", getRecentActivities);
 
 module.exports = router;

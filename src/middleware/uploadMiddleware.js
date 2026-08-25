@@ -7,8 +7,8 @@ const fs = require("fs");
 // ==========================================================
 
 const categoryUploadDir = path.join(
-  __dirname,
-  "../uploads/categories"
+  process.cwd(),
+  "uploads/categories"
 );
 
 if (!fs.existsSync(categoryUploadDir)) {
@@ -22,8 +22,8 @@ if (!fs.existsSync(categoryUploadDir)) {
 // ==========================================================
 
 const productUploadDir = path.join(
-  __dirname,
-  "../uploads/products"
+  process.cwd(),
+  "uploads/products"
 );
 
 if (!fs.existsSync(productUploadDir)) {
@@ -37,8 +37,8 @@ if (!fs.existsSync(productUploadDir)) {
 // ==========================================================
 
 const productVariantUploadDir = path.join(
-  __dirname,
-  "../uploads/product-variants"
+  process.cwd(),
+  "uploads/product-variants"
 );
 
 if (!fs.existsSync(productVariantUploadDir)) {
@@ -58,17 +58,13 @@ const fileFilter = (req, file, cb) => {
     path.extname(file.originalname).toLowerCase()
   );
 
-  const mimeType = allowedTypes.test(
-    file.mimetype
-  );
+  const mimeType = allowedTypes.test(file.mimetype);
 
   if (extension && mimeType) {
     cb(null, true);
   } else {
     cb(
-      new Error(
-        "Only JPG, JPEG, PNG and WEBP images are allowed"
-      ),
+      new Error("Only JPG, JPEG, PNG and WEBP images are allowed"),
       false
     );
   }
@@ -82,14 +78,12 @@ const categoryStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, categoryUploadDir);
   },
-
   filename: function (req, file, cb) {
     const uniqueName =
       Date.now() +
       "-" +
       Math.round(Math.random() * 1e9) +
       path.extname(file.originalname);
-
     cb(null, uniqueName);
   },
 });
@@ -102,14 +96,12 @@ const productStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, productUploadDir);
   },
-
   filename: function (req, file, cb) {
     const uniqueName =
       Date.now() +
       "-" +
       Math.round(Math.random() * 1e9) +
       path.extname(file.originalname);
-
     cb(null, uniqueName);
   },
 });
@@ -122,14 +114,12 @@ const productVariantStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, productVariantUploadDir);
   },
-
   filename: function (req, file, cb) {
     const uniqueName =
       Date.now() +
       "-" +
       Math.round(Math.random() * 1e9) +
       path.extname(file.originalname);
-
     cb(null, uniqueName);
   },
 });
@@ -140,9 +130,7 @@ const productVariantStorage = multer.diskStorage({
 
 const uploadCategoryImage = multer({
   storage: categoryStorage,
-
   fileFilter,
-
   limits: {
     fileSize: 5 * 1024 * 1024,
   },
@@ -154,9 +142,7 @@ const uploadCategoryImage = multer({
 
 const uploadProductImage = multer({
   storage: productStorage,
-
   fileFilter,
-
   limits: {
     fileSize: 5 * 1024 * 1024,
     files: 10,
@@ -169,9 +155,7 @@ const uploadProductImage = multer({
 
 const uploadProductVariantImage = multer({
   storage: productVariantStorage,
-
   fileFilter,
-
   limits: {
     fileSize: 5 * 1024 * 1024,
     files: 10,
