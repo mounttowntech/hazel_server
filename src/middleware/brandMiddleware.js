@@ -3,27 +3,50 @@ const path = require("path");
 const fs = require("fs");
 
 // ==========================================================
-// UPLOAD DIRECTORY
+// CREATE BRAND UPLOAD DIRECTORY
 // ==========================================================
 
-const uploadDir = path.join(
-  __dirname,
-  "../uploads/brands"
+const brandUploadDir = path.join(
+  process.cwd(),
+  "uploads/brands"
 );
 
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, {
+if (!fs.existsSync(brandUploadDir)) {
+  fs.mkdirSync(brandUploadDir, {
     recursive: true,
   });
 }
 
 // ==========================================================
-// STORAGE
+// FILE FILTER
 // ==========================================================
 
-const storage = multer.diskStorage({
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = /jpeg|jpg|png|webp/;
+
+  const extension = allowedTypes.test(
+    path.extname(file.originalname).toLowerCase()
+  );
+
+  const mimeType = allowedTypes.test(file.mimetype);
+
+  if (extension && mimeType) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error("Only JPG, JPEG, PNG and WEBP images are allowed"),
+      false
+    );
+  }
+};
+
+// ==========================================================
+// BRAND STORAGE
+// ==========================================================
+
+const brandStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadDir);
+    cb(null, brandUploadDir);
   },
 
   filename: function (req, file, cb) {
@@ -38,44 +61,20 @@ const storage = multer.diskStorage({
 });
 
 // ==========================================================
-// FILE FILTER
-// ==========================================================
-
-const fileFilter = (req, file, cb) => {
-  const allowedExtensions = [
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".webp",
-  ];
-
-  const extension = path
-    .extname(file.originalname)
-    .toLowerCase();
-
-  if (!allowedExtensions.includes(extension)) {
-    return cb(
-      new Error(
-        "Only JPG, JPEG, PNG and WEBP images are allowed"
-      ),
-      false
-    );
-  }
-
-  cb(null, true);
-};
-
-// ==========================================================
-// MULTER
+// BRAND UPLOAD
 // ==========================================================
 
 const uploadBrandImage = multer({
-  storage,
+  storage: brandStorage,
   fileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024,
   },
 });
+
+// ==========================================================
+// EXPORT
+// ==========================================================
 
 module.exports = {
   uploadBrandImage,

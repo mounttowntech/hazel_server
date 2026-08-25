@@ -1,11 +1,19 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const app = express();
 
-app.use(cors());
 app.use(express.json());
 
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+  })
+);
 
+// Serve uploaded files
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.get("/", (req, res) => {
   res.json({
@@ -13,6 +21,7 @@ app.get("/", (req, res) => {
     message: "Hazel Ecommerce API is running",
   });
 });
+
 
 
 // Routes
@@ -36,4 +45,5 @@ app.use("/api/coupons",require("./src/routes/couponRoutes"));
 app.use("/api/reviews",require("./src/routes/reviewRoutes"));
 app.use("/api/banners",require("./src/routes/bannerRoutes"));
 app.use("/api/notifications",require("./src/routes/notificationRoutes"));
+app.use("/api/dashboard",require("./src/routes/dashboardRoutes"));
 module.exports = app;
