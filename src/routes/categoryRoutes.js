@@ -1,5 +1,4 @@
 const express = require("express");
-
 const router = express.Router();
 
 const categoryController = require("../controllers/categoryController");
@@ -13,9 +12,8 @@ const {
 } = require("../middleware/uploadMiddleware");
 
 // ==========================================================
-// CREATE CATEGORY
+// CREATE CATEGORY (Admin Only - Kept Protected)
 // ==========================================================
-
 router.post(
   "/create",
   verifyToken,
@@ -24,40 +22,33 @@ router.post(
 );
 
 // ==========================================================
-// GET ALL CATEGORIES
+// GET ALL CATEGORIES (Public - Removed verifyToken)
 // ==========================================================
-
 router.get(
   "/all",
-  verifyToken,
   categoryController.getCategories
 );
 
 // ==========================================================
-// GET CATEGORY BY SLUG
+// GET CATEGORY BY SLUG (Public - Removed verifyToken)
 // IMPORTANT: BEFORE /:id
 // ==========================================================
-
 router.get(
   "/slug/:slug",
-  verifyToken,
   categoryController.getCategoryBySlug
 );
 
 // ==========================================================
-// GET SINGLE CATEGORY
+// GET SINGLE CATEGORY (Public - Removed verifyToken)
 // ==========================================================
-
 router.get(
   "/:id",
-  verifyToken,
   categoryController.getCategory
 );
 
 // ==========================================================
-// UPDATE CATEGORY
+// UPDATE CATEGORY (Admin Only - Kept Protected)
 // ==========================================================
-
 router.put(
   "/update/:id",
   verifyToken,
@@ -66,33 +57,12 @@ router.put(
 );
 
 // ==========================================================
-// SOFT DELETE
+// SOFT DELETE (Admin Only - Kept Protected)
 // ==========================================================
-
 router.delete(
   "/delete/:id",
   verifyToken,
   categoryController.deleteCategory
 );
-
-// ==========================================================
-// RESTORE
-// ==========================================================
-
-// router.patch(
-//   "/restore/:id",
-//   verifyToken,
-//   categoryController.restoreCategory
-// );
-
-// ==========================================================
-// PERMANENT DELETE
-// ==========================================================
-
-// router.delete(
-//   "/permanent/:id",
-//   verifyToken,
-//   categoryController.permanentDeleteCategory
-// );
 
 module.exports = router;
