@@ -22,7 +22,11 @@ const bannerSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
-
+    // Add this inside your bannerSchema definition:
+    discountPercentage: {
+       type: Number,
+       default: null,
+    },
     image: {
       type: String,
       required: true,
