@@ -20,11 +20,11 @@ const colorSchema = new mongoose.Schema(
       ],
     },
 
-    description: {
-      type: String,
-      trim: true,
-      default: "",
-    },
+    // description: {
+    //   type: String,
+    //   trim: true,
+    //   default: "",
+    // },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
      ref: "User",

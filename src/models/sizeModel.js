@@ -16,11 +16,11 @@ const sizeSchema = new mongoose.Schema(
       unique: true,
     },
 
-    description: {
-      type: String,
-      trim: true,
-      default: "",
-    },
+    // description: {
+    //   type: String,
+    //   trim: true,
+    //   default: "",
+    // },
 
     isActive: {
       type: Boolean,
