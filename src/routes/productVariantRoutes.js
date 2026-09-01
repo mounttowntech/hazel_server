@@ -11,7 +11,7 @@ const {
   restoreProductVariant,
   updateVariantStock,
   setDefaultVariant,
-} = require("../controllers/ProductVariantController");
+} = require("../controllers/productVariantController");
 
 const {
   uploadProductVariantImage,
