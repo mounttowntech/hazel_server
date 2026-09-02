@@ -1,64 +1,60 @@
 const express = require("express");
 
 const {
-  createCategory,
-  getCategories,
-  getCategoryById,
-  updateCategory,
-  deleteCategory,
-} = require("../controllers/categoryController");
+  createSubCategory,
+  getSubCategories,
+  getSubCategoryById,
+  updateSubCategory,
+  deleteSubCategory,
+} = require("../controllers/subCategoryController");
 
 const {
-  uploadCategoryImage,
+  uploadSubCategoryImage,
 } = require("../middleware/uploadMiddleware");
 
 const router = express.Router();
 
 // ==========================================================
-// CREATE CATEGORY
-// POST /api/categories/create
+// CREATE
+// POST /api/subcategories/create
 // ==========================================================
+
 router.post(
   "/create",
-  uploadCategoryImage.single("image"),
-  createCategory
+  uploadSubCategoryImage.single("image"),
+  createSubCategory
 );
 
 // ==========================================================
-// GET ALL CATEGORIES
-// GET /api/categories/all
+// GET ALL
+// GET /api/subcategories/all
 // ==========================================================
-router.get(
-  "/all",
-  getCategories
-);
+
+router.get("/all", getSubCategories);
 
 // ==========================================================
-// GET CATEGORY BY ID
-// GET /api/categories/:id
+// GET BY ID
+// GET /api/subcategories/:id
 // ==========================================================
-router.get(
-  "/:id",
-  getCategoryById
-);
+
+router.get("/:id", getSubCategoryById);
 
 // ==========================================================
-// UPDATE CATEGORY
-// PUT /api/categories/update/:id
+// UPDATE
+// PUT /api/subcategories/update/:id
 // ==========================================================
+
 router.put(
   "/update/:id",
-  uploadCategoryImage.single("image"),
-  updateCategory
+  uploadSubCategoryImage.single("image"),
+  updateSubCategory
 );
 
 // ==========================================================
-// DELETE CATEGORY
-// DELETE /api/categories/delete/:id
+// DELETE
+// DELETE /api/subcategories/delete/:id
 // ==========================================================
-router.delete(
-  "/delete/:id",
-  deleteCategory
-);
+
+router.delete("/delete/:id", deleteSubCategory);
 
 module.exports = router;

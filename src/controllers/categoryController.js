@@ -1,146 +1,124 @@
-const Category = require("../models/categoryModel");
-const generateSlug = require("../utils/generateSlug");
-const fs = require("fs");
+const mongoose = require("mongoose");
 const path = require("path");
+const fs = require("fs");
 
+const Category = require("../models/categoryModel");
 
-// HELPER - GET USER ID
+// ==========================================================
+// HELPER: GET IMAGE URL
+// ==========================================================
 
+const getImageURL = (file) => {
+  if (!file) {
+    return null;
+  }
 
-const getUserId = (req) => {
-  return req.user?.id || req.user?._id || null;
+  return `/uploads/categories/${file.filename}`;
 };
 
+// ==========================================================
+// HELPER: DELETE OLD IMAGE
+// ==========================================================
 
-// HELPER - DELETE LOCAL IMAGE
-const deleteImage = (imageUrl) => {
+const deleteOldImage = (imageURL) => {
+  if (!imageURL) {
+    return;
+  }
+
   try {
-    if (!imageUrl) return;
+    const fileName = path.basename(imageURL);
 
-    let imagePath = imageUrl;
+    const filePath = path.join(
+      process.cwd(),
+      "uploads",
+      "categories",
+      fileName
+    );
 
-    // Remove domain if full URL
-    if (imageUrl.startsWith("http")) {
-      const url = new URL(imageUrl);
-      imagePath = url.pathname;
-    }
-
-    imagePath = imagePath.replace(/^\/+/, "");
-
-    const fullPath = path.join(process.cwd(), imagePath);
-
-    if (fs.existsSync(fullPath)) {
-      fs.unlinkSync(fullPath);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
     }
   } catch (error) {
-    console.error("Image delete error:", error.message);
+    console.error("Delete old category image error:", error);
   }
 };
 
-
-// HELPER - CREATE UNIQUE SLUG
-
-
-const createUniqueSlug = async (name, excludeId = null) => {
-  const baseSlug = generateSlug(name);
-
-  let slug = baseSlug;
-  let counter = 1;
-
-  while (true) {
-    const query = {
-      slug,
-    };
-
-    if (excludeId) {
-      query._id = {
-        $ne: excludeId,
-      };
-    }
-
-    const existingCategory = await Category.findOne(query);
-
-    if (!existingCategory) {
-      return slug;
-    }
-
-    slug = `${baseSlug}-${counter}`;
-    counter++;
-  }
-};
-
-
+// ==========================================================
 // CREATE CATEGORY
+// POST /api/categories/create
+// ==========================================================
 
-
-exports.createCategory = async (req, res) => {
+const createCategory = async (req, res) => {
   try {
-    const {
-      name,
-      description = "",
-      displayOrder = 0,
-      status = "active",
-    } = req.body;
+    const { name } = req.body;
 
-    // ------------------------------------------------------
+    // ======================================================
     // VALIDATION
-    // ------------------------------------------------------
+    // ======================================================
 
     if (!name || !name.trim()) {
+      if (req.file) {
+        deleteOldImage(
+          `/uploads/categories/${req.file.filename}`
+        );
+      }
+
       return res.status(400).json({
         success: false,
         message: "Category name is required",
       });
     }
 
-    // ------------------------------------------------------
-    // CHECK DUPLICATE NAME
-    // ------------------------------------------------------
+    // ======================================================
+    // IMAGE VALIDATION
+    // ======================================================
 
-    const existingCategory = await Category.findOne({
-      name: {
-        $regex: `^${name.trim()}$`,
-        $options: "i",
-      },
-      isDeleted: false,
-    });
-
-    if (existingCategory) {
-      return res.status(409).json({
+    if (!req.file) {
+      return res.status(400).json({
         success: false,
-        message: "Category with this name already exists",
+        message: "Category image is required",
       });
     }
 
-    // ------------------------------------------------------
-    // GENERATE SLUG
-    // ------------------------------------------------------
+    // ======================================================
+    // CHECK DUPLICATE CATEGORY
+    // ======================================================
 
-    const slug = await createUniqueSlug(name);
+    const categoryName = name.trim();
 
-    // ------------------------------------------------------
-    // IMAGE
-    // ------------------------------------------------------
+    const existingCategory = await Category.findOne({
+      name: categoryName,
+    });
 
-    let image = "";
+    if (existingCategory) {
+      deleteOldImage(
+        `/uploads/categories/${req.file.filename}`
+      );
 
-    if (req.file) {
-      image = `/uploads/categories/${req.file.filename}`;
+      return res.status(409).json({
+        success: false,
+        message: "Category already exists",
+      });
     }
 
-    // ------------------------------------------------------
-    // CREATE
-    // ------------------------------------------------------
+    // ======================================================
+    // IMAGE URL
+    // ======================================================
+
+    const imageURL = getImageURL(req.file);
+
+    // ======================================================
+    // CREATE CATEGORY
+    // ======================================================
 
     const category = await Category.create({
-      name: name.trim(),
-      slug,
-      description,
-      displayOrder: Number(displayOrder) || 0,
-      status,
-      image,
-      createdBy: getUserId(req),
+      name: categoryName,
+      imageURL,
     });
+
+    // ======================================================
+    // RESPONSE
+    // ======================================================
 
     return res.status(201).json({
       success: true,
@@ -148,14 +126,13 @@ exports.createCategory = async (req, res) => {
       data: category,
     });
   } catch (error) {
-    console.error("Create category error:", error);
+    console.error("Create Category Error:", error);
 
-    // Duplicate key
-    if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: "Category already exists",
-      });
+    // Delete uploaded image if database creation fails
+    if (req.file) {
+      deleteOldImage(
+        `/uploads/categories/${req.file.filename}`
+      );
     }
 
     return res.status(500).json({
@@ -166,136 +143,23 @@ exports.createCategory = async (req, res) => {
   }
 };
 
-
+// ==========================================================
 // GET ALL CATEGORIES
+// GET /api/categories/all
+// ==========================================================
 
-
-exports.getCategories = async (req, res) => {
+const getCategories = async (req, res) => {
   try {
-    let {
-      page = 1,
-      limit = 10,
-      search = "",
-      status,
-      includeDeleted = "false",
-      sortBy = "displayOrder",
-      sortOrder = "asc",
-    } = req.query;
-
-    page = Math.max(Number(page), 1);
-    limit = Math.min(Math.max(Number(limit), 1), 100);
-
-    const skip = (page - 1) * limit;
-
-    // ------------------------------------------------------
-    // FILTER
-    // ------------------------------------------------------
-
-    const filter = {};
-
-    if (includeDeleted !== "true") {
-      filter.isDeleted = false;
-    }
-
-    // ------------------------------------------------------
-    // STATUS
-    // ------------------------------------------------------
-
-    if (status) {
-      if (!["active", "inactive"].includes(status)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid status",
-        });
-      }
-
-      filter.status = status;
-    }
-
-    // ------------------------------------------------------
-    // SEARCH
-    // ------------------------------------------------------
-
-    if (search.trim()) {
-      filter.$or = [
-        {
-          name: {
-            $regex: search.trim(),
-            $options: "i",
-          },
-        },
-        {
-          slug: {
-            $regex: search.trim(),
-            $options: "i",
-          },
-        },
-        {
-          description: {
-            $regex: search.trim(),
-            $options: "i",
-          },
-        },
-      ];
-    }
-
-    // ------------------------------------------------------
-    // SORT
-    // ------------------------------------------------------
-
-    const allowedSortFields = [
-      "name",
-      "slug",
-      "displayOrder",
-      "status",
-      "createdAt",
-      "updatedAt",
-    ];
-
-    if (!allowedSortFields.includes(sortBy)) {
-      sortBy = "displayOrder";
-    }
-
-    const sort = {
-      [sortBy]: sortOrder === "desc" ? -1 : 1,
-    };
-
-    // ------------------------------------------------------
-    // QUERY
-    // ------------------------------------------------------
-
-    const [categories, total] = await Promise.all([
-      Category.find(filter)
-        .populate("createdBy", "name email")
-        .populate("updatedBy", "name email")
-        .populate("deletedBy", "name email")
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-
-      Category.countDocuments(filter),
-    ]);
-
-    const totalPages = Math.ceil(total / limit);
+    const categories = await Category.find();
 
     return res.status(200).json({
       success: true,
       message: "Categories fetched successfully",
-
+      count: categories.length,
       data: categories,
-
-      pagination: {
-        currentPage: page,
-        limit,
-        totalItems: total,
-        totalPages,
-        hasNextPage: page < totalPages,
-        hasPreviousPage: page > 1,
-      },
     });
   } catch (error) {
-    console.error("Get categories error:", error);
+    console.error("Get Categories Error:", error);
 
     return res.status(500).json({
       success: false,
@@ -305,101 +169,31 @@ exports.getCategories = async (req, res) => {
   }
 };
 
+// ==========================================================
+// GET CATEGORY BY ID
+// GET /api/categories/:id
+// ==========================================================
 
-// GET SINGLE CATEGORY
-
-
-exports.getCategory = async (req, res) => {
+const getCategoryById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const category = await Category.findOne({
-      _id: id,
-      isDeleted: false,
-    })
-      .populate("createdBy", "name email")
-      .populate("updatedBy", "name email");
+    // ======================================================
+    // VALIDATE OBJECT ID
+    // ======================================================
 
-    if (!category) {
-      return res.status(404).json({
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
         success: false,
-        message: "Category not found",
+        message: "Invalid category ID",
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      data: category,
-    });
-  } catch (error) {
-    console.error("Get category error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch category",
-      error: error.message,
-    });
-  }
-};
-
-
-// GET CATEGORY BY SLUG
-
-
-exports.getCategoryBySlug = async (req, res) => {
-  try {
-    const { slug } = req.params;
-
-    const category = await Category.findOne({
-      slug: slug.toLowerCase(),
-      isDeleted: false,
-    });
-
-    if (!category) {
-      return res.status(404).json({
-        success: false,
-        message: "Category not found",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: category,
-    });
-  } catch (error) {
-    console.error("Get category by slug error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch category",
-      error: error.message,
-    });
-  }
-};
-
-
-// UPDATE CATEGORY
-
-
-exports.updateCategory = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const {
-      name,
-      description,
-      displayOrder,
-      status,
-    } = req.body;
-
-    // ------------------------------------------------------
+    // ======================================================
     // FIND CATEGORY
-    // ------------------------------------------------------
+    // ======================================================
 
-    const category = await Category.findOne({
-      _id: id,
-      isDeleted: false,
-    });
+    const category = await Category.findById(id);
 
     if (!category) {
       return res.status(404).json({
@@ -408,116 +202,144 @@ exports.updateCategory = async (req, res) => {
       });
     }
 
-    // ------------------------------------------------------
-    // NAME
-    // ------------------------------------------------------
+    return res.status(200).json({
+      success: true,
+      message: "Category fetched successfully",
+      data: category,
+    });
+  } catch (error) {
+    console.error("Get Category Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch category",
+      error: error.message,
+    });
+  }
+};
+
+// ==========================================================
+// UPDATE CATEGORY
+// PUT /api/categories/update/:id
+// ==========================================================
+
+const updateCategory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    // ======================================================
+    // VALIDATE OBJECT ID
+    // ======================================================
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      if (req.file) {
+        deleteOldImage(
+          `/uploads/categories/${req.file.filename}`
+        );
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid category ID",
+      });
+    }
+
+    // ======================================================
+    // FIND CATEGORY
+    // ======================================================
+
+    const category = await Category.findById(id);
+
+    if (!category) {
+      if (req.file) {
+        deleteOldImage(
+          `/uploads/categories/${req.file.filename}`
+        );
+      }
+
+      return res.status(404).json({
+        success: false,
+        message: "Category not found",
+      });
+    }
+
+    // ======================================================
+    // UPDATE NAME
+    // ======================================================
 
     if (name !== undefined) {
       const trimmedName = name.trim();
 
       if (!trimmedName) {
+        if (req.file) {
+          deleteOldImage(
+            `/uploads/categories/${req.file.filename}`
+          );
+        }
+
         return res.status(400).json({
           success: false,
           message: "Category name cannot be empty",
         });
       }
 
-      const duplicate = await Category.findOne({
-        name: {
-          $regex: `^${trimmedName}$`,
-          $options: "i",
-        },
-        isDeleted: false,
-        _id: {
-          $ne: id,
-        },
-      });
-
-      if (duplicate) {
-        return res.status(409).json({
-          success: false,
-          message: "Another category with this name already exists",
+      // Check duplicate name
+      if (trimmedName !== category.name) {
+        const duplicateCategory = await Category.findOne({
+          name: trimmedName,
+          _id: { $ne: id },
         });
+
+        if (duplicateCategory) {
+          if (req.file) {
+            deleteOldImage(
+              `/uploads/categories/${req.file.filename}`
+            );
+          }
+
+          return res.status(409).json({
+            success: false,
+            message:
+              "Another category with this name already exists",
+          });
+        }
       }
 
       category.name = trimmedName;
-
-      // Automatically regenerate slug
-      category.slug = await createUniqueSlug(
-        trimmedName,
-        id
-      );
     }
 
-    // ------------------------------------------------------
-    // DESCRIPTION
-    // ------------------------------------------------------
-
-    if (description !== undefined) {
-      category.description = description;
-    }
-
-    // ------------------------------------------------------
-    // DISPLAY ORDER
-    // ------------------------------------------------------
-
-    if (displayOrder !== undefined) {
-      category.displayOrder =
-        Number(displayOrder) || 0;
-    }
-
-    // ------------------------------------------------------
-    // STATUS
-    // ------------------------------------------------------
-
-    if (status !== undefined) {
-      if (!["active", "inactive"].includes(status)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid status",
-        });
-      }
-
-      category.status = status;
-    }
-
-    // ------------------------------------------------------
-    // IMAGE
-    // ------------------------------------------------------
+    // ======================================================
+    // UPDATE IMAGE
+    // ======================================================
 
     if (req.file) {
-      const oldImage = category.image;
+      const oldImageURL = category.imageURL;
 
-      category.image =
-        `/uploads/categories/${req.file.filename}`;
+      category.imageURL = getImageURL(req.file);
 
-      // Delete old image
-      if (oldImage) {
-        deleteImage(oldImage);
-      }
+      // Delete old image after new image is accepted
+      deleteOldImage(oldImageURL);
     }
 
-    // ------------------------------------------------------
-    // AUDIT
-    // ------------------------------------------------------
+    // ======================================================
+    // SAVE
+    // ======================================================
 
-    category.updatedBy = getUserId(req);
-
-    await category.save();
+    const updatedCategory = await category.save();
 
     return res.status(200).json({
       success: true,
       message: "Category updated successfully",
-      data: category,
+      data: updatedCategory,
     });
   } catch (error) {
-    console.error("Update category error:", error);
+    console.error("Update Category Error:", error);
 
-    if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: "Category already exists",
-      });
+    if (req.file) {
+      deleteOldImage(
+        `/uploads/categories/${req.file.filename}`
+      );
     }
 
     return res.status(500).json({
@@ -528,18 +350,31 @@ exports.updateCategory = async (req, res) => {
   }
 };
 
+// ==========================================================
+// DELETE CATEGORY
+// DELETE /api/categories/delete/:id
+// ==========================================================
 
-// SOFT DELETE CATEGORY
-
-
-exports.deleteCategory = async (req, res) => {
+const deleteCategory = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const category = await Category.findOne({
-      _id: id,
-      isDeleted: false,
-    });
+    // ======================================================
+    // VALIDATE OBJECT ID
+    // ======================================================
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid category ID",
+      });
+    }
+
+    // ======================================================
+    // FIND CATEGORY
+    // ======================================================
+
+    const category = await Category.findById(id);
 
     if (!category) {
       return res.status(404).json({
@@ -548,18 +383,24 @@ exports.deleteCategory = async (req, res) => {
       });
     }
 
-    category.isDeleted = true;
-    category.deletedAt = new Date();
-    category.deletedBy = getUserId(req);
+    // ======================================================
+    // DELETE IMAGE
+    // ======================================================
 
-    await category.save();
+    deleteOldImage(category.imageURL);
+
+    // ======================================================
+    // DELETE CATEGORY
+    // ======================================================
+
+    await Category.findByIdAndDelete(id);
 
     return res.status(200).json({
       success: true,
       message: "Category deleted successfully",
     });
   } catch (error) {
-    console.error("Delete category error:", error);
+    console.error("Delete Category Error:", error);
 
     return res.status(500).json({
       success: false,
@@ -570,92 +411,13 @@ exports.deleteCategory = async (req, res) => {
 };
 
 // ==========================================================
-// RESTORE CATEGORY
+// EXPORT
 // ==========================================================
 
-// exports.restoreCategory = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-
-//     const category = await Category.findOne({
-//       _id: id,
-//       isDeleted: true,
-//     });
-
-//     if (!category) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "Deleted category not found",
-//       });
-//     }
-
-//     category.isDeleted = false;
-//     category.deletedAt = null;
-//     category.deletedBy = null;
-//     category.updatedBy = getUserId(req);
-
-//     await category.save();
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Category restored successfully",
-//       data: category,
-//     });
-//   } catch (error) {
-//     console.error("Restore category error:", error);
-
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to restore category",
-//       error: error.message,
-//     });
-//   }
-// };
-
-// ==========================================================
-// PERMANENT DELETE
-// ==========================================================
-
-// exports.deleteCategory = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-
-//     const category = await Category.findOne({
-//       _id: id,
-//       isDeleted: true,
-//     });
-
-//     if (!category) {
-//       return res.status(404).json({
-//         success: false,
-//         message:
-//           "Deleted category not found. Only soft-deleted categories can be permanently deleted.",
-//       });
-//     }
-
-//     // Delete image
-//     if (category.image) {
-//       deleteImage(category.image);
-//     }
-
-//     await Category.deleteOne({
-//       _id: id,
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Category permanently deleted",
-//     });
-//   } catch (error) {
-//     console.error(
-//       "Permanent delete category error:",
-//       error
-//     );
-
-//     return res.status(500).json({
-//       success: false,
-//       message: "Failed to permanently delete category",
-//       error: error.message,
-//     });
-//   }
-// };
+module.exports = {
+  createCategory,
+  getCategories,
+  getCategoryById,
+  updateCategory,
+  deleteCategory,
+};
