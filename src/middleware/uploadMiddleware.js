@@ -3,71 +3,91 @@ const path = require("path");
 const fs = require("fs");
 
 // ==========================================================
-// CREATE CATEGORY UPLOAD DIRECTORY
+// UPLOAD DIRECTORIES
 // ==========================================================
 
 const categoryUploadDir = path.join(
   process.cwd(),
-  "uploads/categories"
+  "uploads",
+  "categories"
 );
 
-if (!fs.existsSync(categoryUploadDir)) {
-  fs.mkdirSync(categoryUploadDir, {
-    recursive: true,
-  });
-}
-
-// ==========================================================
-// CREATE PRODUCT UPLOAD DIRECTORY
-// ==========================================================
+const subCategoryUploadDir = path.join(
+  process.cwd(),
+  "uploads",
+  "subcategories"
+);
 
 const productUploadDir = path.join(
   process.cwd(),
-  "uploads/products"
+  "uploads",
+  "products"
 );
-
-if (!fs.existsSync(productUploadDir)) {
-  fs.mkdirSync(productUploadDir, {
-    recursive: true,
-  });
-}
-
-// ==========================================================
-// CREATE PRODUCT VARIANT UPLOAD DIRECTORY
-// ==========================================================
 
 const productVariantUploadDir = path.join(
   process.cwd(),
-  "uploads/product-variants"
+  "uploads",
+  "product-variants"
 );
 
-if (!fs.existsSync(productVariantUploadDir)) {
-  fs.mkdirSync(productVariantUploadDir, {
-    recursive: true,
-  });
-}
+// ==========================================================
+// CREATE DIRECTORIES
+// ==========================================================
+
+[
+  categoryUploadDir,
+  subCategoryUploadDir,
+  productUploadDir,
+  productVariantUploadDir,
+].forEach((dir) => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
 
 // ==========================================================
-// COMMON FILE FILTER
+// FILE FILTER
 // ==========================================================
 
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|webp/;
+  const allowedExtensions = [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+  ];
 
-  const extension = allowedTypes.test(
-    path.extname(file.originalname).toLowerCase()
-  );
+  const extension = path.extname(file.originalname).toLowerCase();
 
-  const mimeType = allowedTypes.test(file.mimetype);
+  console.log("========== IMAGE UPLOAD ==========");
+  console.log("File name :", file.originalname);
+  console.log("Extension :", extension);
+  console.log("MIME type :", file.mimetype);
+  console.log("==================================");
 
-  if (extension && mimeType) {
-    cb(null, true);
-  } else {
-    cb(
-      new Error("Only JPG, JPEG, PNG and WEBP images are allowed"),
-      false
-    );
+  if (allowedExtensions.includes(extension)) {
+    return cb(null, true);
   }
+
+  return cb(
+    new Error("Only JPG, JPEG, PNG and WEBP images are allowed"),
+    false
+  );
+};
+
+// ==========================================================
+// GENERATE FILE NAME
+// ==========================================================
+
+const generateFileName = (file) => {
+  const extension = path.extname(file.originalname).toLowerCase();
+
+  return (
+    Date.now() +
+    "-" +
+    Math.round(Math.random() * 1e9) +
+    extension
+  );
 };
 
 // ==========================================================
@@ -75,16 +95,26 @@ const fileFilter = (req, file, cb) => {
 // ==========================================================
 
 const categoryStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
+  destination: (req, file, cb) => {
     cb(null, categoryUploadDir);
   },
-  filename: function (req, file, cb) {
-    const uniqueName =
-      Date.now() +
-      "-" +
-      Math.round(Math.random() * 1e9) +
-      path.extname(file.originalname);
-    cb(null, uniqueName);
+
+  filename: (req, file, cb) => {
+    cb(null, generateFileName(file));
+  },
+});
+
+// ==========================================================
+// SUB CATEGORY STORAGE
+// ==========================================================
+
+const subCategoryStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, subCategoryUploadDir);
+  },
+
+  filename: (req, file, cb) => {
+    cb(null, generateFileName(file));
   },
 });
 
@@ -93,16 +123,12 @@ const categoryStorage = multer.diskStorage({
 // ==========================================================
 
 const productStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
+  destination: (req, file, cb) => {
     cb(null, productUploadDir);
   },
-  filename: function (req, file, cb) {
-    const uniqueName =
-      Date.now() +
-      "-" +
-      Math.round(Math.random() * 1e9) +
-      path.extname(file.originalname);
-    cb(null, uniqueName);
+
+  filename: (req, file, cb) => {
+    cb(null, generateFileName(file));
   },
 });
 
@@ -111,18 +137,22 @@ const productStorage = multer.diskStorage({
 // ==========================================================
 
 const productVariantStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
+  destination: (req, file, cb) => {
     cb(null, productVariantUploadDir);
   },
-  filename: function (req, file, cb) {
-    const uniqueName =
-      Date.now() +
-      "-" +
-      Math.round(Math.random() * 1e9) +
-      path.extname(file.originalname);
-    cb(null, uniqueName);
+
+  filename: (req, file, cb) => {
+    cb(null, generateFileName(file));
   },
 });
+
+// ==========================================================
+// UPLOAD LIMITS
+// ==========================================================
+
+const uploadLimits = {
+  fileSize: 5 * 1024 * 1024,
+};
 
 // ==========================================================
 // CATEGORY UPLOAD
@@ -132,7 +162,21 @@ const uploadCategoryImage = multer({
   storage: categoryStorage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024,
+    ...uploadLimits,
+    files: 1,
+  },
+});
+
+// ==========================================================
+// SUB CATEGORY UPLOAD
+// ==========================================================
+
+const uploadSubCategoryImage = multer({
+  storage: subCategoryStorage,
+  fileFilter,
+  limits: {
+    ...uploadLimits,
+    files: 1,
   },
 });
 
@@ -144,7 +188,7 @@ const uploadProductImage = multer({
   storage: productStorage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024,
+    ...uploadLimits,
     files: 10,
   },
 });
@@ -157,7 +201,7 @@ const uploadProductVariantImage = multer({
   storage: productVariantStorage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024,
+    ...uploadLimits,
     files: 10,
   },
 });
@@ -168,6 +212,7 @@ const uploadProductVariantImage = multer({
 
 module.exports = {
   uploadCategoryImage,
+  uploadSubCategoryImage,
   uploadProductImage,
   uploadProductVariantImage,
 };

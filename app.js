@@ -46,4 +46,5 @@ app.use("/api/reviews",require("./src/routes/reviewRoutes"));
 app.use("/api/banners",require("./src/routes/bannerRoutes"));
 app.use("/api/notifications",require("./src/routes/notificationRoutes"));
 app.use("/api/dashboard",require("./src/routes/dashboardRoutes"));
+app.use("/api/subcategories", require("./src/routes/subCategoryRoutes"))
 module.exports = app;
