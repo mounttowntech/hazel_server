@@ -33,7 +33,7 @@ app.use("/api/neck-patterns",require("./src/routes/neckPatternRoutes"));
 app.use("/api/size",require("./src/routes/sizeRoutes"));
 app.use("/api/colors",require("./src/routes/colorRoutes"));
 app.use("/api/products",require("./src/routes/productRoutes"));
-app.use("/api/product-variants",require("./src/routes/productVariantRoutes"));
+// app.use("/api/product-variants",require("./src/routes/productVariantRoutes"));
 app.use("/api/cart",require("./src/routes/cartRoutes"));
 app.use("/api/wishlist",require("./src/routes/wishlistRoutes"));
 app.use("/api/locations",require("./src/routes/locationRoutes"));
