@@ -1,4 +1,3 @@
-
 const Product = require("../models/productModel");
 const mongoose = require("mongoose");
 const fs = require("fs");
@@ -116,6 +115,36 @@ const generateBarcode = async () => {
   }
 
   return barcode;
+};
+
+// ============================================================
+// GENERATE UNIQUE SLUG
+//
+// The Product model has a unique index on "slug". Nothing was
+// setting it on create, so every product tried to save
+// slug: null — Mongo's unique index allows exactly ONE null,
+// so the first product succeeded and every one after it threw
+// E11000 duplicate key error on slug_1.
+// ============================================================
+
+const generateProductSlug = async (productName) => {
+  const base = String(productName || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-+|-+$)/g, "") || "product";
+
+  let slug;
+  let exists = true;
+
+  while (exists) {
+    const suffix = generateRandomNumber(4);
+    slug = `${base}-${suffix}`;
+
+    exists = await Product.exists({ slug });
+  }
+
+  return slug;
 };
 
 // ============================================================
@@ -560,6 +589,12 @@ exports.createProduct = async (
     }
 
     // ----------------------------------------------------------
+    // GENERATE UNIQUE SLUG
+    // ----------------------------------------------------------
+
+    const slug = await generateProductSlug(name);
+
+    // ----------------------------------------------------------
     // CREATE PRODUCT
     // ----------------------------------------------------------
 
@@ -573,6 +608,8 @@ exports.createProduct = async (
         brandId,
 
         name: name.trim(),
+
+        slug,
 
         description: {
           about:
