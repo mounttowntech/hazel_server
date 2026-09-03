@@ -1,101 +1,285 @@
+
 const mongoose = require("mongoose");
 
-const productSchema = new mongoose.Schema(
+// ============================================================
+// SIZE SCHEMA
+// ============================================================
+
+const SizeSchema = new mongoose.Schema(
   {
+    size: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+      enum: ["S", "M", "L", "XL", "2XL", "3XL"],
+    },
+
+    stockQuantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    sku: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    barcode: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  {
+    _id: true,
+  }
+);
+
+// ============================================================
+// MEDIA SCHEMA
+// ============================================================
+
+const MediaSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      required: true,
+      enum: ["image", "video"],
+    },
+
+    imageURL: {
+      type: String,
+      required: false,
+      trim: true,
+    },
+
+    thumbnail: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+  },
+  {
+    _id: true,
+  }
+);
+
+// ============================================================
+// VARIANT SCHEMA
+// ============================================================
+
+const VariantSchema = new mongoose.Schema(
+  {
+    color: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+    },
+
+    media: {
+      type: [MediaSchema],
+      default: [],
+
+      validate: {
+        validator: function (media) {
+          return media.length <= 10;
+        },
+
+        message:
+          "Maximum 10 media files are allowed for each color",
+      },
+    },
+
+    fabric: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    feel: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    lining: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    sleeves: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    finishing: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    pocket: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    price: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    discountPrice: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    offer: {
+      type: {
+        type: String,
+        enum: ["percentage", "fixed", "none"],
+        default: "none",
+      },
+
+      value: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      startDate: {
+        type: Date,
+        default: null,
+      },
+
+      endDate: {
+        type: Date,
+        default: null,
+      },
+    },
+
+    sizes: {
+      type: [SizeSchema],
+      default: [],
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  {
+    _id: true,
+  }
+);
+
+// ============================================================
+// PRODUCT SCHEMA
+// ============================================================
+
+const ProductSchema = new mongoose.Schema(
+  {
+    categoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
+      required: false,
+      default: null,
+    },
+
+    subCategoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SubCategory",
+      required: true,
+    },
+
+    brandId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Brand",
+      required: false,
+      default: null,
+    },
 
     name: {
       type: String,
       required: true,
       trim: true,
     },
-    slug: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-      lowercase: true,
-      index: true,
-    },
-    category: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Category",
-      required: true,
-      index: true,
-    },
-    brand: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Brand",
-      required: true,
-      index: true,
-    },
-    length: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Length",
-      required: true,
-      index: true,
-    },
-    neckPattern: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "NeckPattern",
-      required: true,
-      index: true,
-    },
+
     description: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-    images: [
-      {
+      about: {
         type: String,
         trim: true,
+        default: "",
       },
-    ],
-    status: {
-      type: String,
-      enum: [
-        "draft",
-        "active",
-        "inactive",
-      ],
-      default: "draft",
-      index: true,
-    },
-    isFeatured: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-    isNewArrival: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-    isBestSeller: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
+
+      itemDetails: {
+        type: String,
+        trim: true,
+        default: "",
+      },
     },
 
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
+    variants: {
+      type: [VariantSchema],
+      default: [],
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
     },
   },
-
   {
     timestamps: true,
   }
 );
 
+// ============================================================
+// INDEXES
+// ============================================================
 
+ProductSchema.index({
+  name: "text",
+});
 
-module.exports =
-  mongoose.models.Product ||
-  mongoose.model("Product", productSchema);
+ProductSchema.index({
+  categoryId: 1,
+});
+
+ProductSchema.index({
+  subCategoryId: 1,
+});
+
+ProductSchema.index({
+  brandId: 1,
+});
+
+ProductSchema.index({
+  isActive: 1,
+  isDeleted: 1,
+});
+
+// ============================================================
+// EXPORT
+// ============================================================
+
+module.exports = mongoose.model("Product", ProductSchema);
+
