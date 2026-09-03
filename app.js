@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+
 const app = express();
 
 app.use(express.json());
@@ -12,7 +13,7 @@ app.use(
   })
 );
 
-// Serve uploaded files
+// Serve uploaded files statically from root 'uploads'
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.get("/", (req, res) => {
@@ -23,8 +24,6 @@ app.get("/", (req, res) => {
 });
 
 
-
-// Routes
 
 app.use("/api/auth",require("./src/routes/authRoutes"));
 app.use("/api/categories",require("./src/routes/categoryRoutes"));
