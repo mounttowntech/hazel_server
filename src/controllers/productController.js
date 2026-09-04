@@ -1,10 +1,11 @@
+
 const Product = require("../models/productModel");
 const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
 
 // ============================================================
-// HELPER - DELETE FILE
+// HELPER - DELETE UPLOADED FILE
 // ============================================================
 
 const deleteUploadedFile = (file) => {
@@ -33,9 +34,7 @@ const generateRandomNumber = (length = 4) => {
   const max = Math.pow(10, length) - 1;
 
   return Math.floor(
-    min +
-      Math.random() *
-        (max - min + 1)
+    min + Math.random() * (max - min + 1)
   );
 };
 
@@ -54,9 +53,7 @@ const createColorCode = (color) => {
 // HELPER - CREATE PRODUCT CODE
 // ============================================================
 
-const createProductCode = (
-  productName
-) => {
+const createProductCode = (productName) => {
   return String(productName || "")
     .replace(/[^a-zA-Z0-9]/g, "")
     .substring(0, 3)
@@ -118,33 +115,31 @@ const generateBarcode = async () => {
 };
 
 // ============================================================
-// GENERATE UNIQUE SLUG
+// CALCULATE VARIANT QUANTITY
+// ============================================================
 //
-// The Product model has a unique index on "slug". Nothing was
-// setting it on create, so every product tried to save
-// slug: null — Mongo's unique index allows exactly ONE null,
-// so the first product succeeded and every one after it threw
-// E11000 duplicate key error on slug_1.
+// quantity = total stock of all sizes
+//
+// Example:
+// S  = 5
+// M  = 10
+// L  = 8
+// XL = 2
+//
+// quantity = 25
 // ============================================================
 
-const generateProductSlug = async (productName) => {
-  const base = String(productName || "")
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-+|-+$)/g, "") || "product";
-
-  let slug;
-  let exists = true;
-
-  while (exists) {
-    const suffix = generateRandomNumber(4);
-    slug = `${base}-${suffix}`;
-
-    exists = await Product.exists({ slug });
+const calculateVariantQuantity = (sizes) => {
+  if (!Array.isArray(sizes)) {
+    return 0;
   }
 
-  return slug;
+  return sizes.reduce((total, size) => {
+    return (
+      total +
+      (Number(size.stockQuantity) || 0)
+    );
+  }, 0);
 };
 
 // ============================================================
@@ -162,6 +157,10 @@ const prepareVariants = async (
   const preparedVariants = [];
 
   for (const variant of variants) {
+    // ----------------------------------------------------------
+    // COLOR
+    // ----------------------------------------------------------
+
     const color = String(
       variant.color || ""
     )
@@ -173,6 +172,26 @@ const prepareVariants = async (
         "Variant color is required"
       );
     }
+
+    // ----------------------------------------------------------
+    // MEDIA
+    // ----------------------------------------------------------
+
+    const media = Array.isArray(
+      variant.media
+    )
+      ? variant.media
+      : [];
+
+    if (media.length > 10) {
+      throw new Error(
+        `Maximum 10 media files are allowed for ${color}`
+      );
+    }
+
+    // ----------------------------------------------------------
+    // SIZES
+    // ----------------------------------------------------------
 
     const preparedSizes = [];
 
@@ -205,6 +224,25 @@ const prepareVariants = async (
           );
         }
 
+        // ------------------------------------------------------
+        // STOCK QUANTITY
+        // ------------------------------------------------------
+
+        const stockQuantity =
+          Number(
+            sizeData.stockQuantity
+          ) || 0;
+
+        if (stockQuantity < 0) {
+          throw new Error(
+            `Stock quantity cannot be negative for size ${size}`
+          );
+        }
+
+        // ------------------------------------------------------
+        // SKU
+        // ------------------------------------------------------
+
         const sku =
           sizeData.sku ||
           (await generateSKU(
@@ -213,17 +251,22 @@ const prepareVariants = async (
             size
           ));
 
+        // ------------------------------------------------------
+        // BARCODE
+        // ------------------------------------------------------
+
         const barcode =
           sizeData.barcode ||
           (await generateBarcode());
 
+        // ------------------------------------------------------
+        // PUSH SIZE
+        // ------------------------------------------------------
+
         preparedSizes.push({
           size,
 
-          stockQuantity:
-            Number(
-              sizeData.stockQuantity
-            ) || 0,
+          stockQuantity,
 
           sku,
 
@@ -240,14 +283,97 @@ const prepareVariants = async (
       }
     }
 
+    // ----------------------------------------------------------
+    // CALCULATE TOTAL QUANTITY
+    // ----------------------------------------------------------
+
+    const quantity =
+      calculateVariantQuantity(
+        preparedSizes
+      );
+
+    // ----------------------------------------------------------
+    // DISCOUNT PRICE
+    // ----------------------------------------------------------
+
+    let discountPrice = null;
+
+    if (
+      variant.discountPrice !==
+        undefined &&
+      variant.discountPrice !== null &&
+      variant.discountPrice !== ""
+    ) {
+      discountPrice = Number(
+        variant.discountPrice
+      );
+
+      if (
+        Number.isNaN(discountPrice) ||
+        discountPrice < 0
+      ) {
+        throw new Error(
+          `Invalid discount price for ${color}`
+        );
+      }
+    }
+
+    // ----------------------------------------------------------
+    // PRICE
+    // ----------------------------------------------------------
+
+    const price =
+      Number(variant.price);
+
+    if (
+      Number.isNaN(price) ||
+      price < 0
+    ) {
+      throw new Error(
+        `Invalid price for ${color}`
+      );
+    }
+
+    // ----------------------------------------------------------
+    // OFFER
+    // ----------------------------------------------------------
+
+    const offerType =
+      variant.offer?.type || "none";
+
+    const offerValue =
+      Number(
+        variant.offer?.value
+      ) || 0;
+
+    const offerStartDate =
+      variant.offer?.startDate ||
+      null;
+
+    const offerEndDate =
+      variant.offer?.endDate ||
+      null;
+
+    if (
+      ![
+        "percentage",
+        "fixed",
+        "none",
+      ].includes(offerType)
+    ) {
+      throw new Error(
+        `Invalid offer type for ${color}`
+      );
+    }
+
+    // ----------------------------------------------------------
+    // PREPARED VARIANT
+    // ----------------------------------------------------------
+
     preparedVariants.push({
       color,
 
-      media: Array.isArray(
-        variant.media
-      )
-        ? variant.media
-        : [],
+      media,
 
       fabric:
         variant.fabric || "",
@@ -267,40 +393,27 @@ const prepareVariants = async (
       pocket:
         variant.pocket || "",
 
-      price:
-        Number(variant.price) || 0,
+      // Automatically calculated
+      quantity,
 
-      discountPrice:
-        variant.discountPrice !==
-          undefined &&
-        variant.discountPrice !==
-          null &&
-        variant.discountPrice !== ""
-          ? Number(
-              variant.discountPrice
-            )
-          : null,
+      price,
+
+      discountPrice,
 
       offer: {
-        type:
-          variant.offer?.type ||
-          "none",
+        type: offerType,
 
-        value:
-          Number(
-            variant.offer?.value
-          ) || 0,
+        value: offerValue,
 
         startDate:
-          variant.offer?.startDate ||
-          null,
+          offerStartDate,
 
         endDate:
-          variant.offer?.endDate ||
-          null,
+          offerEndDate,
       },
 
-      sizes: preparedSizes,
+      sizes:
+        preparedSizes,
 
       isActive:
         variant.isActive !==
@@ -366,7 +479,7 @@ exports.createProduct = async (
     } = req.body;
 
     // ----------------------------------------------------------
-    // VALIDATION
+    // VALIDATE SUB CATEGORY
     // ----------------------------------------------------------
 
     if (!subCategoryId) {
@@ -383,6 +496,10 @@ exports.createProduct = async (
       });
     }
 
+    // ----------------------------------------------------------
+    // VALIDATE BRAND
+    // ----------------------------------------------------------
+
     if (!brandId) {
       if (req.files) {
         req.files.forEach(
@@ -397,7 +514,14 @@ exports.createProduct = async (
       });
     }
 
-    if (!name) {
+    // ----------------------------------------------------------
+    // VALIDATE NAME
+    // ----------------------------------------------------------
+
+    if (
+      !name ||
+      !String(name).trim()
+    ) {
       if (req.files) {
         req.files.forEach(
           deleteUploadedFile
@@ -488,7 +612,7 @@ exports.createProduct = async (
     const preparedVariants =
       await prepareVariants(
         parsedVariants || [],
-        name
+        String(name).trim()
       );
 
     // ----------------------------------------------------------
@@ -496,7 +620,8 @@ exports.createProduct = async (
     // ----------------------------------------------------------
 
     if (
-      preparedVariants.length === 0
+      preparedVariants.length ===
+      0
     ) {
       if (req.files) {
         req.files.forEach(
@@ -542,7 +667,7 @@ exports.createProduct = async (
     }
 
     // ----------------------------------------------------------
-    // UPLOADED MEDIA
+    // PREPARE UPLOADED MEDIA
     // ----------------------------------------------------------
 
     const uploadedMedia =
@@ -551,20 +676,12 @@ exports.createProduct = async (
       );
 
     // ----------------------------------------------------------
-    // ASSIGN MEDIA
-    //
-    // During CREATE:
-    // Uploaded "media" files are assigned
-    // to the first color variant.
-    //
-    // Additional color media can be added
-    // later using:
-    //
-    // POST
-    // /:productId/variants/:variantId/media
+    // ASSIGN MEDIA TO FIRST VARIANT
     // ----------------------------------------------------------
 
-    if (uploadedMedia.length > 0) {
+    if (
+      uploadedMedia.length > 0
+    ) {
       if (
         preparedVariants[0]
           .media.length +
@@ -589,12 +706,6 @@ exports.createProduct = async (
     }
 
     // ----------------------------------------------------------
-    // GENERATE UNIQUE SLUG
-    // ----------------------------------------------------------
-
-    const slug = await generateProductSlug(name);
-
-    // ----------------------------------------------------------
     // CREATE PRODUCT
     // ----------------------------------------------------------
 
@@ -605,11 +716,11 @@ exports.createProduct = async (
 
         subCategoryId,
 
-        brandId,
+        brandId:
+          brandId || null,
 
-        name: name.trim(),
-
-        slug,
+        name:
+          String(name).trim(),
 
         description: {
           about:
@@ -635,6 +746,7 @@ exports.createProduct = async (
 
     return res.status(201).json({
       success: true,
+
       message:
         "Product created successfully",
 
@@ -654,8 +766,10 @@ exports.createProduct = async (
 
     return res.status(500).json({
       success: false,
+
       message:
         "Failed to create product",
+
       error: error.message,
     });
   }
@@ -681,15 +795,17 @@ exports.getAllProducts = async (
       isActive,
     } = req.query;
 
-    const pageNumber = Math.max(
-      Number(page) || 1,
-      1
-    );
+    const pageNumber =
+      Math.max(
+        Number(page) || 1,
+        1
+      );
 
-    const limitNumber = Math.max(
-      Number(limit) || 10,
-      1
-    );
+    const limitNumber =
+      Math.max(
+        Number(limit) || 10,
+        1
+      );
 
     const skip =
       (pageNumber - 1) *
@@ -715,16 +831,52 @@ exports.getAllProducts = async (
     }
 
     if (categoryId) {
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          categoryId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid category ID",
+        });
+      }
+
       filter.categoryId =
         categoryId;
     }
 
     if (subCategoryId) {
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          subCategoryId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid subCategory ID",
+        });
+      }
+
       filter.subCategoryId =
         subCategoryId;
     }
 
     if (brandId) {
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          brandId
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid brand ID",
+        });
+      }
+
       filter.brandId =
         brandId;
     }
@@ -816,6 +968,10 @@ exports.getProductById = async (
       productId,
     } = req.params;
 
+    // ----------------------------------------------------------
+    // VALIDATE ID
+    // ----------------------------------------------------------
+
     if (
       !mongoose.Types.ObjectId.isValid(
         productId
@@ -827,6 +983,10 @@ exports.getProductById = async (
           "Invalid product ID",
       });
     }
+
+    // ----------------------------------------------------------
+    // FIND PRODUCT
+    // ----------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -845,10 +1005,16 @@ exports.getProductById = async (
       });
     }
 
+    // ----------------------------------------------------------
+    // RESPONSE
+    // ----------------------------------------------------------
+
     return res.status(200).json({
       success: true,
+
       message:
         "Product fetched successfully",
+
       data: product,
     });
   } catch (error) {
@@ -859,8 +1025,10 @@ exports.getProductById = async (
 
     return res.status(500).json({
       success: false,
+
       message:
         "Failed to fetch product",
+
       error: error.message,
     });
   }
@@ -880,6 +1048,10 @@ exports.updateProduct = async (
       productId,
     } = req.params;
 
+    // ----------------------------------------------------------
+    // VALIDATE PRODUCT ID
+    // ----------------------------------------------------------
+
     if (
       !mongoose.Types.ObjectId.isValid(
         productId
@@ -897,6 +1069,10 @@ exports.updateProduct = async (
           "Invalid product ID",
       });
     }
+
+    // ----------------------------------------------------------
+    // FIND PRODUCT
+    // ----------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -944,24 +1120,60 @@ exports.updateProduct = async (
       subCategoryId !==
       undefined
     ) {
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          subCategoryId
+        )
+      ) {
+        if (req.files) {
+          req.files.forEach(
+            deleteUploadedFile
+          );
+        }
+
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid subCategory ID",
+        });
+      }
+
       product.subCategoryId =
         subCategoryId;
     }
 
     if (
-      brandId !== undefined
+      brandId !==
+      undefined
     ) {
       product.brandId =
         brandId || null;
     }
 
     if (name !== undefined) {
+      if (
+        !String(name).trim()
+      ) {
+        if (req.files) {
+          req.files.forEach(
+            deleteUploadedFile
+          );
+        }
+
+        return res.status(400).json({
+          success: false,
+          message:
+            "Product name cannot be empty",
+        });
+      }
+
       product.name =
         String(name).trim();
     }
 
     if (
-      isActive !== undefined
+      isActive !==
+      undefined
     ) {
       product.isActive =
         isActive === true ||
@@ -1012,7 +1224,8 @@ exports.updateProduct = async (
     // ----------------------------------------------------------
 
     if (
-      variants !== undefined
+      variants !==
+      undefined
     ) {
       let parsedVariants =
         variants;
@@ -1059,11 +1272,19 @@ exports.updateProduct = async (
         });
       }
 
+      // --------------------------------------------------------
+      // PREPARE VARIANTS
+      // --------------------------------------------------------
+
       const preparedVariants =
         await prepareVariants(
           parsedVariants,
           product.name
         );
+
+      // --------------------------------------------------------
+      // CHECK DUPLICATE COLORS
+      // --------------------------------------------------------
 
       const colors =
         preparedVariants.map(
@@ -1092,7 +1313,7 @@ exports.updateProduct = async (
       }
 
       // --------------------------------------------------------
-      // NEW MEDIA
+      // UPLOADED MEDIA
       // --------------------------------------------------------
 
       const uploadedMedia =
@@ -1105,8 +1326,8 @@ exports.updateProduct = async (
         0
       ) {
         if (
-          preparedVariants
-            .length === 0
+          preparedVariants.length ===
+          0
         ) {
           req.files.forEach(
             deleteUploadedFile
@@ -1137,20 +1358,29 @@ exports.updateProduct = async (
         }
 
         preparedVariants[0].media =
-          uploadedMedia;
+          [
+            ...preparedVariants[0]
+              .media,
+            ...uploadedMedia,
+          ];
       }
+
+      // --------------------------------------------------------
+      // REPLACE VARIANTS
+      // --------------------------------------------------------
 
       product.variants =
         preparedVariants;
-    } else if (
+    }
+
+    // ----------------------------------------------------------
+    // MEDIA ONLY UPDATE
+    // ----------------------------------------------------------
+
+    else if (
       req.files &&
       req.files.length > 0
     ) {
-      // --------------------------------------------------------
-      // MEDIA ONLY UPDATE
-      // Add new media to first variant
-      // --------------------------------------------------------
-
       if (
         product.variants.length ===
         0
@@ -1175,8 +1405,7 @@ exports.updateProduct = async (
         product.variants[0];
 
       if (
-        firstVariant.media
-          .length +
+        firstVariant.media.length +
           uploadedMedia.length >
         10
       ) {
@@ -1202,10 +1431,16 @@ exports.updateProduct = async (
 
     await product.save();
 
+    // ----------------------------------------------------------
+    // RESPONSE
+    // ----------------------------------------------------------
+
     return res.status(200).json({
       success: true,
+
       message:
         "Product updated successfully",
+
       data: product,
     });
   } catch (error) {
@@ -1222,8 +1457,10 @@ exports.updateProduct = async (
 
     return res.status(500).json({
       success: false,
+
       message:
         "Failed to update product",
+
       error: error.message,
     });
   }
@@ -1243,6 +1480,10 @@ exports.deleteProduct = async (
       productId,
     } = req.params;
 
+    // ----------------------------------------------------------
+    // VALIDATE ID
+    // ----------------------------------------------------------
+
     if (
       !mongoose.Types.ObjectId.isValid(
         productId
@@ -1254,6 +1495,10 @@ exports.deleteProduct = async (
           "Invalid product ID",
       });
     }
+
+    // ----------------------------------------------------------
+    // FIND PRODUCT
+    // ----------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -1274,12 +1519,18 @@ exports.deleteProduct = async (
     // ----------------------------------------------------------
 
     product.isDeleted = true;
+
     product.isActive = false;
 
     await product.save();
 
+    // ----------------------------------------------------------
+    // RESPONSE
+    // ----------------------------------------------------------
+
     return res.status(200).json({
       success: true,
+
       message:
         "Product deleted successfully",
     });
@@ -1291,8 +1542,10 @@ exports.deleteProduct = async (
 
     return res.status(500).json({
       success: false,
+
       message:
         "Failed to delete product",
+
       error: error.message,
     });
   }
@@ -1456,6 +1709,10 @@ exports.addVariantMedia = async (
 
     await product.save();
 
+    // ----------------------------------------------------------
+    // RESPONSE
+    // ----------------------------------------------------------
+
     return res.status(200).json({
       success: true,
 
@@ -1516,7 +1773,7 @@ exports.deleteVariantMedia = async (
     } = req.params;
 
     // ----------------------------------------------------------
-    // VALIDATE IDS
+    // VALIDATE PRODUCT ID
     // ----------------------------------------------------------
 
     if (
@@ -1531,6 +1788,10 @@ exports.deleteVariantMedia = async (
       });
     }
 
+    // ----------------------------------------------------------
+    // VALIDATE VARIANT ID
+    // ----------------------------------------------------------
+
     if (
       !mongoose.Types.ObjectId.isValid(
         variantId
@@ -1542,6 +1803,10 @@ exports.deleteVariantMedia = async (
           "Invalid variant ID",
       });
     }
+
+    // ----------------------------------------------------------
+    // VALIDATE MEDIA ID
+    // ----------------------------------------------------------
 
     if (
       !mongoose.Types.ObjectId.isValid(
@@ -1642,6 +1907,10 @@ exports.deleteVariantMedia = async (
     media.deleteOne();
 
     await product.save();
+
+    // ----------------------------------------------------------
+    // RESPONSE
+    // ----------------------------------------------------------
 
     return res.status(200).json({
       success: true,
