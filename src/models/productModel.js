@@ -1,10 +1,5 @@
 
 const mongoose = require("mongoose");
-
-// ============================================================
-// SIZE SCHEMA
-// ============================================================
-
 const SizeSchema = new mongoose.Schema(
   {
     size: {
@@ -15,6 +10,7 @@ const SizeSchema = new mongoose.Schema(
       enum: ["S", "M", "L", "XL", "2XL", "3XL"],
     },
 
+    
     stockQuantity: {
       type: Number,
       default: 0,
@@ -42,11 +38,6 @@ const SizeSchema = new mongoose.Schema(
     _id: true,
   }
 );
-
-// ============================================================
-// MEDIA SCHEMA
-// ============================================================
-
 const MediaSchema = new mongoose.Schema(
   {
     type: {
@@ -57,8 +48,8 @@ const MediaSchema = new mongoose.Schema(
 
     imageURL: {
       type: String,
-      required: false,
       trim: true,
+      default: null,
     },
 
     thumbnail: {
@@ -71,11 +62,34 @@ const MediaSchema = new mongoose.Schema(
     _id: true,
   }
 );
+const OfferSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["percentage", "fixed", "none"],
+      default: "none",
+    },
 
-// ============================================================
-// VARIANT SCHEMA
-// ============================================================
+    value: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
 
+    startDate: {
+      type: Date,
+      default: null,
+    },
+
+    endDate: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    _id: false,
+  }
+);
 const VariantSchema = new mongoose.Schema(
   {
     color: {
@@ -84,7 +98,6 @@ const VariantSchema = new mongoose.Schema(
       trim: true,
       uppercase: true,
     },
-
     media: {
       type: [MediaSchema],
       default: [],
@@ -98,7 +111,6 @@ const VariantSchema = new mongoose.Schema(
           "Maximum 10 media files are allowed for each color",
       },
     },
-
     fabric: {
       type: String,
       trim: true,
@@ -134,7 +146,11 @@ const VariantSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
-
+    quantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     price: {
       type: Number,
       required: true,
@@ -146,36 +162,19 @@ const VariantSchema = new mongoose.Schema(
       default: null,
       min: 0,
     },
-
     offer: {
-      type: {
-        type: String,
-        enum: ["percentage", "fixed", "none"],
-        default: "none",
-      },
-
-      value: {
-        type: Number,
-        default: 0,
-        min: 0,
-      },
-
-      startDate: {
-        type: Date,
-        default: null,
-      },
-
-      endDate: {
-        type: Date,
-        default: null,
-      },
+      type: OfferSchema,
+      default: () => ({
+        type: "none",
+        value: 0,
+        startDate: null,
+        endDate: null,
+      }),
     },
-
     sizes: {
       type: [SizeSchema],
       default: [],
     },
-
     isActive: {
       type: Boolean,
       default: true,
@@ -185,11 +184,6 @@ const VariantSchema = new mongoose.Schema(
     _id: true,
   }
 );
-
-// ============================================================
-// PRODUCT SCHEMA
-// ============================================================
-
 const ProductSchema = new mongoose.Schema(
   {
     categoryId: {
@@ -198,26 +192,22 @@ const ProductSchema = new mongoose.Schema(
       required: false,
       default: null,
     },
-
     subCategoryId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SubCategory",
       required: true,
     },
-
     brandId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Brand",
       required: false,
       default: null,
     },
-
-    name: {
+     name: {
       type: String,
       required: true,
       trim: true,
     },
-
     description: {
       about: {
         type: String,
@@ -252,34 +242,9 @@ const ProductSchema = new mongoose.Schema(
   }
 );
 
-// ============================================================
-// INDEXES
-// ============================================================
 
-ProductSchema.index({
-  name: "text",
-});
 
-ProductSchema.index({
-  categoryId: 1,
-});
 
-ProductSchema.index({
-  subCategoryId: 1,
-});
-
-ProductSchema.index({
-  brandId: 1,
-});
-
-ProductSchema.index({
-  isActive: 1,
-  isDeleted: 1,
-});
-
-// ============================================================
-// EXPORT
-// ============================================================
 
 module.exports = mongoose.model("Product", ProductSchema);
 
