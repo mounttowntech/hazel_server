@@ -1,6 +1,11 @@
 const express = require("express");
 
-const router = express.Router();
+const router =
+  express.Router();
+
+// ==========================================================
+// CONTROLLER
+// ==========================================================
 
 const {
   createNewArrival,
@@ -10,87 +15,109 @@ const {
   deleteNewArrival,
 } = require("../controllers/newArrivalController");
 
+// ==========================================================
+// MULTER
+// ==========================================================
+
 const {
   uploadNewArrivalImage,
   handleUploadError,
 } = require("../middleware/uploadMiddleware");
 
-// ============================================================
-// CREATE
-// POST /api/newArrivals/create
-// ============================================================
+// ==========================================================
+// CREATE NEW ARRIVAL
+// ==========================================================
+//
+// POST
+// /api/new-arrivals/create
+//
+// Files:
+// productImages -> maximum 4
+//
+// ==========================================================
 
 router.post(
   "/create",
 
-  uploadNewArrivalImage.fields([
-    {
-      name: "heroImage",
-      maxCount: 1,
-    },
-    {
-      name: "productImages",
-      maxCount: 3,
-    },
-  ]),
+  uploadNewArrivalImage.array(
+    "productImages",
+    4
+  ),
 
   handleUploadError,
 
   createNewArrival
 );
 
-// ============================================================
-// GET ALL
-// GET /api/newArrivals
-// ============================================================
+// ==========================================================
+// GET ALL NEW ARRIVALS
+// ==========================================================
+//
+// GET
+// /api/new-arrivals
+//
+// ==========================================================
 
 router.get(
   "/all",
   getAllNewArrivals
 );
 
-// ============================================================
-// GET BY ID
-// GET /api/newArrivals/:id
-// ============================================================
+// ==========================================================
+// GET NEW ARRIVAL BY ID
+// ==========================================================
+//
+// GET
+// /api/new-arrivals/:id
+//
+// ==========================================================
 
 router.get(
   "/:id",
   getNewArrivalById
 );
 
-// ============================================================
-// UPDATE
-// PUT /api/newArrivals/:id
-// ============================================================
+// ==========================================================
+// UPDATE NEW ARRIVAL
+// ==========================================================
+//
+// PUT
+// /api/new-arrivals/:id
+//
+// Files:
+// productImages -> maximum 4
+//
+// ==========================================================
 
 router.put(
   "/update/:id",
 
-  uploadNewArrivalImage.fields([
-    {
-      name: "heroImage",
-      maxCount: 1,
-    },
-    {
-      name: "productImages",
-      maxCount: 3,
-    },
-  ]),
+  uploadNewArrivalImage.array(
+    "productImages",
+    4
+  ),
 
   handleUploadError,
 
   updateNewArrival
 );
 
-// ============================================================
+// ==========================================================
+// DELETE NEW ARRIVAL
+// ==========================================================
+//
 // DELETE
-// DELETE /api/newArrivals/:id
-// ============================================================
+// /api/new-arrivals/:id
+//
+// ==========================================================
 
 router.delete(
   "/delete/:id",
   deleteNewArrival
 );
+
+// ==========================================================
+// EXPORT
+// ==========================================================
 
 module.exports = router;

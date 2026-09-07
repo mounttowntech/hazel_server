@@ -1,88 +1,95 @@
 const mongoose = require("mongoose");
 
-const NewArrivalProductSchema =
-  new mongoose.Schema(
-    {
-      product: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Product",
-        required: true,
-      },
+// ==========================================================
+// NEW ARRIVAL PRODUCT SCHEMA
+// ==========================================================
 
-      displayOrder: {
-        type: Number,
-        default: 1,
-        min: 1,
-      },
-
-      isFeatured: {
-        type: Boolean,
-        default: false,
-      },
-
-      image: {
-        type: String,
-        default: null,
-      },
+const NewArrivalProductSchema = new mongoose.Schema(
+  {
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
     },
-    {
-      _id: true,
-    }
-  );
 
-const NewArrivalSchema =
-  new mongoose.Schema(
-    {
-      title: {
-        type: String,
-        required: true,
-        trim: true,
-      },
+    displayOrder: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
 
-      subtitle: {
-        type: String,
-        trim: true,
-        default: "",
-      },
+    isFeatured: {
+      type: Boolean,
+      default: false,
+    },
 
-      description: {
-        type: String,
-        trim: true,
-        default: "",
-      },
+    // Image specifically uploaded for this New Arrival product
+    image: {
+      type: String,
+      default: null,
+    },
+  },
+  {
+    _id: true,
+  }
+);
 
-      featuredProduct: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Product",
-        default: null,
-      },
+// ==========================================================
+// NEW ARRIVAL SCHEMA
+// ==========================================================
 
-      products: {
-        type: [NewArrivalProductSchema],
+const NewArrivalSchema = new mongoose.Schema(
+  {
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+    },
 
-        validate: {
-          validator: function (value) {
-            return value.length <= 3;
-          },
+    subtitle: {
+      type: String,
+      trim: true,
+      default: "",
+    },
 
-          message:
-            "Maximum 3 products are allowed",
+    description: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    featuredProduct: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      default: null,
+    },
+
+    // Maximum 4 products
+    products: {
+      type: [NewArrivalProductSchema],
+
+      validate: {
+        validator: function (value) {
+          return value.length <= 4;
         },
+
+        message: "Maximum 4 products are allowed",
       },
 
-      heroImage: {
-        type: String,
-        default: null,
-      },
+      default: [],
     },
+  },
 
-    {
-      timestamps: true,
-    }
-  );
+  {
+    timestamps: true,
+  }
+);
 
-module.exports =
-  mongoose.model(
-    "NewArrival",
-    NewArrivalSchema
-  );
+// ==========================================================
+// EXPORT
+// ==========================================================
+
+module.exports = mongoose.model(
+  "NewArrival",
+  NewArrivalSchema
+);
