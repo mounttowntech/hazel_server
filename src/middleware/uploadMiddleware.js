@@ -24,14 +24,21 @@ const productUploadDir = path.join(
   "products"
 );
 
+const newArrivalUploadDir = path.join(
+  process.cwd(),
+  "uploads",
+  "new-arrivals"
+);
+
 // ============================================================
-// CREATE DIRECTORIES
+// CREATE UPLOAD DIRECTORIES
 // ============================================================
 
 [
   categoryUploadDir,
   subCategoryUploadDir,
   productUploadDir,
+  newArrivalUploadDir,
 ].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, {
@@ -59,7 +66,7 @@ const generateFileName = (file) => {
 
 // ============================================================
 // IMAGE FILE FILTER
-// CATEGORY / SUBCATEGORY
+// CATEGORY / SUBCATEGORY / NEW ARRIVAL
 // ============================================================
 
 const imageFileFilter = (req, file, cb) => {
@@ -76,14 +83,23 @@ const imageFileFilter = (req, file, cb) => {
 
   console.log("==========================================");
   console.log("IMAGE UPLOAD");
-  console.log("File name :", file.originalname);
-  console.log("Extension :", extension);
-  console.log("MIME type :", file.mimetype);
+  console.log("Field name :", file.fieldname);
+  console.log("File name  :", file.originalname);
+  console.log("Extension  :", extension);
+  console.log("MIME type  :", file.mimetype);
   console.log("==========================================");
+
+  // ----------------------------------------------------------
+  // VALID IMAGE EXTENSION
+  // ----------------------------------------------------------
 
   if (allowedExtensions.includes(extension)) {
     return cb(null, true);
   }
+
+  // ----------------------------------------------------------
+  // INVALID FILE
+  // ----------------------------------------------------------
 
   return cb(
     new Error(
@@ -118,9 +134,10 @@ const productMediaFileFilter = (req, file, cb) => {
 
   console.log("==========================================");
   console.log("PRODUCT MEDIA UPLOAD");
-  console.log("File name :", file.originalname);
-  console.log("Extension :", extension);
-  console.log("MIME type :", file.mimetype);
+  console.log("Field name :", file.fieldname);
+  console.log("File name  :", file.originalname);
+  console.log("Extension  :", extension);
+  console.log("MIME type  :", file.mimetype);
   console.log("==========================================");
 
   // ----------------------------------------------------------
@@ -194,17 +211,39 @@ const productStorage = multer.diskStorage({
 });
 
 // ============================================================
+// NEW ARRIVAL STORAGE
+// ============================================================
+
+const newArrivalStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, newArrivalUploadDir);
+  },
+
+  filename: (req, file, cb) => {
+    cb(null, generateFileName(file));
+  },
+});
+
+// ============================================================
 // UPLOAD LIMITS
 // ============================================================
 
-// Category / Subcategory
+// ------------------------------------------------------------
+// CATEGORY / SUBCATEGORY / NEW ARRIVAL
+// Maximum file size = 5 MB
+// ------------------------------------------------------------
+
 const imageUploadLimits = {
-  fileSize: 5 * 1024 * 1024, // 5 MB
+  fileSize: 5 * 1024 * 1024,
 };
 
-// Product media
+// ------------------------------------------------------------
+// PRODUCT MEDIA
+// Maximum file size = 100 MB
+// ------------------------------------------------------------
+
 const productMediaUploadLimits = {
-  fileSize: 100 * 1024 * 1024, // 100 MB
+  fileSize: 100 * 1024 * 1024,
 };
 
 // ============================================================
@@ -218,6 +257,8 @@ const uploadCategoryImage = multer({
 
   limits: {
     ...imageUploadLimits,
+
+    // Only one category image
     files: 1,
   },
 });
@@ -233,6 +274,8 @@ const uploadSubCategoryImage = multer({
 
   limits: {
     ...imageUploadLimits,
+
+    // Only one subcategory image
     files: 1,
   },
 });
@@ -248,9 +291,128 @@ const uploadProductMedia = multer({
 
   limits: {
     ...productMediaUploadLimits,
+
+    // Maximum 10 product media files
     files: 10,
   },
 });
+
+// ============================================================
+// NEW ARRIVAL IMAGE UPLOAD
+// ============================================================
+//
+// NEW ARRIVAL SUPPORTS:
+//
+// heroImage      = 1 file
+// productImages  = maximum 3 files
+//
+// TOTAL           = maximum 4 files
+//
+// IMPORTANT:
+// The route must use:
+//
+// uploadNewArrivalImage.fields([
+//   { name: "heroImage", maxCount: 1 },
+//   { name: "productImages", maxCount: 3 }
+// ])
+//
+// ============================================================
+
+const uploadNewArrivalImage = multer({
+  storage: newArrivalStorage,
+
+  fileFilter: imageFileFilter,
+
+  limits: {
+    ...imageUploadLimits,
+
+    // 1 hero image + 3 product images
+    files: 4,
+  },
+});
+
+// ============================================================
+// MULTER ERROR HANDLER
+// ============================================================
+//
+// Optional middleware that can be used after Multer
+// to return clean JSON errors instead of HTML.
+//
+// ============================================================
+
+const handleUploadError = (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    console.error("==========================================");
+    console.error("MULTER ERROR");
+    console.error("Code    :", err.code);
+    console.error("Message :", err.message);
+    console.error("==========================================");
+
+    // --------------------------------------------------------
+    // TOO MANY FILES
+    // --------------------------------------------------------
+
+    if (err.code === "LIMIT_FILE_COUNT") {
+      return res.status(400).json({
+        success: false,
+        message: "Too many files uploaded",
+        error: err.message,
+      });
+    }
+
+    // --------------------------------------------------------
+    // FILE TOO LARGE
+    // --------------------------------------------------------
+
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        success: false,
+        message: "File size is too large",
+        error: "Maximum allowed file size is 5 MB",
+      });
+    }
+
+    // --------------------------------------------------------
+    // UNEXPECTED FIELD
+    // --------------------------------------------------------
+
+    if (err.code === "LIMIT_UNEXPECTED_FILE") {
+      return res.status(400).json({
+        success: false,
+        message: "Unexpected file field",
+        field: err.field,
+      });
+    }
+
+    // --------------------------------------------------------
+    // OTHER MULTER ERROR
+    // --------------------------------------------------------
+
+    return res.status(400).json({
+      success: false,
+      message: "File upload failed",
+      error: err.message,
+    });
+  }
+
+  // ----------------------------------------------------------
+  // CUSTOM FILE FILTER ERROR
+  // ----------------------------------------------------------
+
+  if (err) {
+    console.error("==========================================");
+    console.error("UPLOAD ERROR");
+    console.error("Message :", err.message);
+    console.error("==========================================");
+
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+
+  next();
+};
 
 // ============================================================
 // EXPORT
@@ -260,4 +422,6 @@ module.exports = {
   uploadCategoryImage,
   uploadSubCategoryImage,
   uploadProductMedia,
+  uploadNewArrivalImage,
+  handleUploadError,
 };
