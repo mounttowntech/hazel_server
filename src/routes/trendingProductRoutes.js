@@ -1,119 +1,114 @@
 const express = require("express");
 
-const router =
-  express.Router();
+const router = express.Router();
 
 // ==========================================================
 // CONTROLLER
 // ==========================================================
 
 const {
-  createNewArrival,
-  getAllNewArrivals,
-  getNewArrivalById,
-  updateNewArrival,
-  deleteNewArrival,
-} = require("../controllers/newArrivalController");
+  createTrendingProduct,
+  getAllTrendingProducts,
+  getTrendingProductById,
+  updateTrendingProduct,
+  deleteTrendingProduct,
+} = require("../controllers/trendingProductController");
 
 // ==========================================================
-// MULTER
+// UPLOAD MIDDLEWARE
 // ==========================================================
 
 const {
-  uploadNewArrivalImage,
+  uploadTrendingProductImage,
   handleUploadError,
 } = require("../middleware/uploadMiddleware");
 
 // ==========================================================
-// CREATE NEW ARRIVAL
+// CREATE TRENDING PRODUCTS
 // ==========================================================
 //
 // POST
-// /api/new-arrivals/create
+// /api/trending-products/create
 //
-// Files:
-// productImages -> maximum 4
+// form-data:
+//
+// title
+// subtitle
+// products
+// isActive
+// productImages
 //
 // ==========================================================
 
 router.post(
   "/create",
-
-  uploadNewArrivalImage.array(
+  uploadTrendingProductImage.array(
     "productImages",
-    4
+    50
   ),
-
   handleUploadError,
-
-  createNewArrival
+  createTrendingProduct
 );
 
 // ==========================================================
-// GET ALL NEW ARRIVALS
+// GET ALL TRENDING PRODUCTS
 // ==========================================================
 //
 // GET
-// /api/new-arrivals
+// /api/trending-products
 //
 // ==========================================================
 
 router.get(
   "/all",
-  getAllNewArrivals
+  getAllTrendingProducts
 );
 
 // ==========================================================
-// GET NEW ARRIVAL BY ID
+// GET TRENDING PRODUCT BY ID
 // ==========================================================
 //
 // GET
-// /api/new-arrivals/:id
+// /api/trending-products/:id
 //
 // ==========================================================
 
 router.get(
   "/:id",
-  getNewArrivalById
+  getTrendingProductById
 );
 
 // ==========================================================
-// UPDATE NEW ARRIVAL
+// UPDATE TRENDING PRODUCTS
 // ==========================================================
 //
 // PUT
-// /api/new-arrivals/:id
-//
-// Files:
-// productImages -> maximum 4
+// /api/trending-products/:id
 //
 // ==========================================================
 
 router.put(
   "/update/:id",
-
-  uploadNewArrivalImage.array(
+  uploadTrendingProductImage.array(
     "productImages",
-    4
+    50
   ),
-
   handleUploadError,
-
-  updateNewArrival
+  updateTrendingProduct
 );
 
 // ==========================================================
-// DELETE NEW ARRIVAL
+// DELETE TRENDING PRODUCTS
 // ==========================================================
 //
 // DELETE
-// /api/new-arrivals/:id
+// /api/trending-products/:id
 //
 // ==========================================================
 
 router.delete(
   "/delete/:id",
-  deleteNewArrival
+  deleteTrendingProduct
 );
 
 // ==========================================================

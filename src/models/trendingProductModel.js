@@ -1,15 +1,20 @@
 const mongoose = require("mongoose");
 
 // ==========================================================
-// NEW ARRIVAL PRODUCT SCHEMA
+// TRENDING PRODUCT ITEM SCHEMA
 // ==========================================================
 
-const NewArrivalProductSchema = new mongoose.Schema(
+const TrendingProductItemSchema = new mongoose.Schema(
   {
     product: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product",
       required: true,
+    },
+
+    image: {
+      type: String,
+      default: null,
     },
 
     displayOrder: {
@@ -22,12 +27,6 @@ const NewArrivalProductSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-
-    // Image specifically uploaded for this New Arrival product
-    image: {
-      type: String,
-      default: null,
-    },
   },
   {
     _id: true,
@@ -35,51 +34,35 @@ const NewArrivalProductSchema = new mongoose.Schema(
 );
 
 // ==========================================================
-// NEW ARRIVAL SCHEMA
+// TRENDING PRODUCT SCHEMA
 // ==========================================================
 
-const NewArrivalSchema = new mongoose.Schema(
+const TrendingProductSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
+      default: "Trending Products",
     },
 
     subtitle: {
       type: String,
+      required: false,
       trim: true,
       default: "",
     },
 
-    description: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-
-    featuredProduct: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Product",
-      default: null,
-    },
-
-    // Maximum 4 products
     products: {
-      type: [NewArrivalProductSchema],
-
-      validate: {
-        validator: function (value) {
-          return value.length <= 4;
-        },
-
-        message: "Maximum 4 products are allowed",
-      },
-
+      type: [TrendingProductItemSchema],
       default: [],
     },
-  },
 
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
   {
     timestamps: true,
   }
@@ -90,6 +73,6 @@ const NewArrivalSchema = new mongoose.Schema(
 // ==========================================================
 
 module.exports = mongoose.model(
-  "NewArrival",
-  NewArrivalSchema
+  "TrendingProduct",
+  TrendingProductSchema
 );

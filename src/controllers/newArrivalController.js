@@ -5,96 +5,110 @@ const path = require("path");
 const NewArrival = require("../models/newArrivalModel");
 const Product = require("../models/productModel");
 
-// ============================================================
-// IMAGE URL HELPER
-// ============================================================
+// ==========================================================
+// GET FULL IMAGE URL
+// ==========================================================
 
-const getImageUrl = (req, filePath) => {
-  if (!filePath) {
+const getImageUrl = (
+  req,
+  imagePath
+) => {
+  if (!imagePath) {
     return null;
   }
 
-  if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
-    return filePath;
-  }
+  const normalizedPath =
+    imagePath
+      .replace(/\\/g, "/")
+      .replace(/^\/+/, "");
 
-  const normalizedPath = filePath.replace(/\\/g, "/");
-
-  return `${req.protocol}://${req.get("host")}/${normalizedPath}`;
+  return `${req.protocol}://${req.get(
+    "host"
+  )}/${normalizedPath}`;
 };
 
-// ============================================================
+// ==========================================================
 // DELETE LOCAL FILE
-// ============================================================
+// ==========================================================
 
-const deleteLocalFile = (filePath) => {
-  try {
-    if (!filePath) {
-      return;
-    }
-
-    // Remove URL if accidentally stored
-    let cleanPath = filePath;
-
-    if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
-      cleanPath = new URL(cleanPath).pathname;
-    }
-
-    cleanPath = cleanPath.replace(/^[/\\]+/, "");
-
-    const absolutePath = path.join(process.cwd(), cleanPath);
-
-    if (fs.existsSync(absolutePath)) {
-      fs.unlinkSync(absolutePath);
-      console.log("Deleted file:", absolutePath);
-    }
-  } catch (error) {
-    console.error("File delete error:", error.message);
+const deleteLocalFile = (
+  imagePath
+) => {
+  if (!imagePath) {
+    return;
   }
-};
 
-// ============================================================
-// DELETE UPLOADED FILES WHEN VALIDATION FAILS
-// ============================================================
+  const normalizedPath =
+    imagePath.replace(
+      /\\/g,
+      "/"
+    );
 
-const deleteUploadedFiles = (req) => {
+  const absolutePath =
+    path.join(
+      process.cwd(),
+      normalizedPath
+    );
+
   try {
-    if (!req.files) {
-      return;
-    }
+    if (
+      fs.existsSync(
+        absolutePath
+      )
+    ) {
+      fs.unlinkSync(
+        absolutePath
+      );
 
-    // --------------------------------------------------------
-    // HERO IMAGE
-    // --------------------------------------------------------
-
-    if (req.files.heroImage) {
-      req.files.heroImage.forEach((file) => {
-        deleteLocalFile(file.path);
-      });
-    }
-
-    // --------------------------------------------------------
-    // PRODUCT IMAGES
-    // --------------------------------------------------------
-
-    if (req.files.productImages) {
-      req.files.productImages.forEach((file) => {
-        deleteLocalFile(file.path);
-      });
+      console.log(
+        "Deleted file:",
+        absolutePath
+      );
     }
   } catch (error) {
     console.error(
-      "Uploaded file cleanup error:",
+      "Error deleting file:",
       error.message
     );
   }
 };
 
-// ============================================================
-// PARSE PRODUCTS
-// ============================================================
+// ==========================================================
+// DELETE UPLOADED FILES
+// ==========================================================
 
-const parseProducts = (products) => {
+const deleteUploadedFiles = (
+  files
+) => {
+  if (
+    !files ||
+    !Array.isArray(files)
+  ) {
+    return;
+  }
+
+  files.forEach((file) => {
+    if (file?.path) {
+      const relativePath =
+        path.relative(
+          process.cwd(),
+          file.path
+        );
+
+      deleteLocalFile(
+        relativePath
+      );
+    }
+  });
+};
+
+// ==========================================================
+// PARSE PRODUCTS
+// ==========================================================
+
+const parseProducts = (
+  products
+) => {
   if (!products) {
     return [];
   }
@@ -103,995 +117,1186 @@ const parseProducts = (products) => {
     return products;
   }
 
-  if (typeof products === "string") {
+  if (
+    typeof products ===
+    "object"
+  ) {
+    return products;
+  }
+
+  try {
     return JSON.parse(products);
-  }
+  } catch (error) {
+    const customError =
+      new Error(
+        "Invalid products JSON format"
+      );
 
-  return products;
+    customError.details =
+      error.message;
+
+    throw customError;
+  }
 };
 
-// ============================================================
+// ==========================================================
 // VALIDATE PRODUCTS
-// ============================================================
+// ==========================================================
 
-const validateProducts = async (products) => {
-  // ----------------------------------------------------------
-  // MUST BE ARRAY
-  // ----------------------------------------------------------
-
-  if (!Array.isArray(products)) {
-    return {
-      valid: false,
-      message: "Products must be an array",
-    };
-  }
-
-  // ----------------------------------------------------------
-  // MAXIMUM 3 PRODUCTS
-  // ----------------------------------------------------------
-
-  if (products.length > 3) {
-    return {
-      valid: false,
-      message: "Maximum 3 products are allowed",
-    };
-  }
-
-  // ----------------------------------------------------------
-  // PRODUCT OBJECT VALIDATION
-  // ----------------------------------------------------------
-
-  for (let i = 0; i < products.length; i++) {
-    const item = products[i];
-
-    if (!item || typeof item !== "object") {
-      return {
-        valid: false,
-        message: `Invalid product data at index ${i}`,
-      };
-    }
-
-    if (!item.product) {
-      return {
-        valid: false,
-        message: `Product ID is required at index ${i}`,
-      };
-    }
-
-    // --------------------------------------------------------
-    // OBJECT ID VALIDATION
-    // --------------------------------------------------------
-
-    if (!mongoose.Types.ObjectId.isValid(item.product)) {
-      return {
-        valid: false,
-        message: `Invalid product ID at index ${i}: ${item.product}`,
-      };
-    }
-
-    // --------------------------------------------------------
-    // DISPLAY ORDER
-    // --------------------------------------------------------
-
+const validateProducts =
+  async (products) => {
     if (
-      item.displayOrder !== undefined &&
-      item.displayOrder !== null &&
-      (
-        Number.isNaN(Number(item.displayOrder)) ||
-        Number(item.displayOrder) < 1
+      !Array.isArray(
+        products
       )
     ) {
-      return {
-        valid: false,
-        message: `Invalid displayOrder at index ${i}`,
-      };
+      throw new Error(
+        "Products must be an array"
+      );
     }
 
-    // --------------------------------------------------------
-    // IS FEATURED
-    // --------------------------------------------------------
-
+    // Maximum 4 products
     if (
-      item.isFeatured !== undefined &&
-      typeof item.isFeatured !== "boolean"
+      products.length > 4
     ) {
-      return {
-        valid: false,
-        message: `isFeatured must be true or false at index ${i}`,
-      };
-    }
-  }
-
-  // ----------------------------------------------------------
-  // CHECK DUPLICATE PRODUCTS
-  // ----------------------------------------------------------
-
-  const productIds = products.map((item) =>
-    item.product.toString()
-  );
-
-  const uniqueProductIds = new Set(productIds);
-
-  if (uniqueProductIds.size !== productIds.length) {
-    return {
-      valid: false,
-      message: "Duplicate products are not allowed",
-    };
-  }
-
-  // ----------------------------------------------------------
-  // CHECK PRODUCTS EXIST
-  // ----------------------------------------------------------
-
-  const existingProducts = await Product.find({
-    _id: {
-      $in: productIds,
-    },
-  }).select("_id");
-
-  const existingProductIds = new Set(
-    existingProducts.map((item) => item._id.toString())
-  );
-
-  for (const productId of productIds) {
-    if (!existingProductIds.has(productId)) {
-      return {
-        valid: false,
-        message: `Product not found: ${productId}`,
-      };
-    }
-  }
-
-  return {
-    valid: true,
-  };
-};
-
-// ============================================================
-// CREATE NEW ARRIVAL
-// ============================================================
-// POST /api/newArrivals/create
-// ============================================================
-
-const createNewArrival = async (req, res) => {
-  try {
-    console.log("==========================================");
-    console.log("CREATE NEW ARRIVAL");
-    console.log("==========================================");
-
-    const {
-      title,
-      subtitle,
-      description,
-      featuredProduct,
-      products,
-    } = req.body;
-
-    // ========================================================
-    // REQUIRED TITLE
-    // ========================================================
-
-    if (!title || !title.trim()) {
-      deleteUploadedFiles(req);
-
-      return res.status(400).json({
-        success: false,
-        message: "Title is required",
-      });
+      throw new Error(
+        "Maximum 4 products are allowed"
+      );
     }
 
-    // ========================================================
-    // PARSE PRODUCTS
-    // ========================================================
+    const productIds = [];
 
-    let parsedProducts = [];
+    for (
+      let i = 0;
+      i < products.length;
+      i++
+    ) {
+      const item =
+        products[i];
 
-    if (products !== undefined && products !== null && products !== "") {
-      try {
-        parsedProducts = parseProducts(products);
-      } catch (error) {
-        deleteUploadedFiles(req);
+      // --------------------------------
+      // PRODUCT OBJECT
+      // --------------------------------
 
-        console.error(
-          "Products JSON Parse Error:",
-          error.message
+      if (
+        !item ||
+        typeof item !==
+          "object"
+      ) {
+        throw new Error(
+          `Invalid product data at index ${i}`
         );
-
-        console.error(
-          "Received products:",
-          products
-        );
-
-        return res.status(400).json({
-          success: false,
-          message: "Invalid products JSON format",
-          error: error.message,
-          example:
-            '[{"product":"PRODUCT_ID","displayOrder":1,"isFeatured":true}]',
-        });
       }
-    }
 
-    // ========================================================
-    // VALIDATE PRODUCTS
-    // ========================================================
+      // --------------------------------
+      // PRODUCT ID
+      // --------------------------------
 
-    const productValidation =
-      await validateProducts(parsedProducts);
+      if (
+        !item.product
+      ) {
+        throw new Error(
+          `Product ID is required at index ${i}`
+        );
+      }
 
-    if (!productValidation.valid) {
-      deleteUploadedFiles(req);
+      // --------------------------------
+      // OBJECT ID VALIDATION
+      // --------------------------------
 
-      return res.status(400).json({
-        success: false,
-        message: productValidation.message,
-      });
-    }
-
-    // ========================================================
-    // FEATURED PRODUCT VALIDATION
-    // ========================================================
-
-    if (featuredProduct) {
       if (
         !mongoose.Types.ObjectId.isValid(
-          featuredProduct
+          item.product
         )
       ) {
-        deleteUploadedFiles(req);
-
-        return res.status(400).json({
-          success: false,
-          message: "Invalid featured product ID",
-        });
+        throw new Error(
+          `Invalid product ID at index ${i}`
+        );
       }
 
-      const featuredProductExists =
-        await Product.findById(featuredProduct);
-
-      if (!featuredProductExists) {
-        deleteUploadedFiles(req);
-
-        return res.status(404).json({
-          success: false,
-          message: "Featured product not found",
-        });
-      }
+      productIds.push(
+        item.product.toString()
+      );
     }
 
-    // ========================================================
-    // HERO IMAGE
-    // ========================================================
+    // --------------------------------
+    // DUPLICATE PRODUCT CHECK
+    // --------------------------------
 
-    const heroImage =
-      req.files?.heroImage?.[0];
+    const uniqueIds =
+      new Set(
+        productIds
+      );
 
-    let heroImagePath = null;
-
-    if (heroImage) {
-      heroImagePath = path
-        .relative(process.cwd(), heroImage.path)
-        .replace(/\\/g, "/");
+    if (
+      uniqueIds.size !==
+      productIds.length
+    ) {
+      throw new Error(
+        "Duplicate products are not allowed"
+      );
     }
 
-    // ========================================================
-    // PRODUCT IMAGES
-    // ========================================================
+    // --------------------------------
+    // CHECK PRODUCTS EXIST
+    // --------------------------------
 
-    const productImages =
-      req.files?.productImages || [];
+    const existingProducts =
+      await Product.find({
+        _id: {
+          $in: productIds,
+        },
+      }).select("_id");
 
-    // ========================================================
-    // MAP PRODUCT IMAGES BY ARRAY ORDER
-    // ========================================================
-    //
-    // Product 1 -> productImages[0]
-    // Product 2 -> productImages[1]
-    // Product 3 -> productImages[2]
-    //
-    // ========================================================
+    if (
+      existingProducts.length !==
+      productIds.length
+    ) {
+      const existingIds =
+        existingProducts.map(
+          (item) =>
+            item._id.toString()
+        );
 
-    const finalProducts = parsedProducts.map(
-      (item, index) => {
-        const productImage =
-          productImages[index];
-
-        let imagePath = null;
-
-        if (productImage) {
-          imagePath = path
-            .relative(
-              process.cwd(),
-              productImage.path
+      const missingIds =
+        productIds.filter(
+          (id) =>
+            !existingIds.includes(
+              id
             )
-            .replace(/\\/g, "/");
-        }
-
-        return {
-          product: item.product,
-
-          displayOrder:
-            item.displayOrder !== undefined
-              ? Number(item.displayOrder)
-              : index + 1,
-
-          isFeatured:
-            item.isFeatured === true,
-
-          image: imagePath,
-        };
-      }
-    );
-
-    // ========================================================
-    // CREATE NEW ARRIVAL
-    // ========================================================
-
-    const newArrival = await NewArrival.create({
-      title: title.trim(),
-
-      subtitle: subtitle
-        ? subtitle.trim()
-        : "",
-
-      description: description
-        ? description.trim()
-        : "",
-
-      featuredProduct:
-        featuredProduct || null,
-
-      products: finalProducts,
-
-      heroImage: heroImagePath,
-    });
-
-    // ========================================================
-    // POPULATE RESPONSE
-    // ========================================================
-
-    const populatedNewArrival =
-      await NewArrival.findById(
-        newArrival._id
-      )
-        .populate(
-          "featuredProduct",
-          "name title slug images"
-        )
-        .populate(
-          "products.product",
-          "name title slug images"
         );
 
-    // ========================================================
-    // RESPONSE
-    // ========================================================
-
-    return res.status(201).json({
-      success: true,
-      message: "New Arrival created successfully",
-
-      data: {
-        ...populatedNewArrival.toObject(),
-
-        heroImage: getImageUrl(
-          req,
-          populatedNewArrival.heroImage
-        ),
-
-        products:
-          populatedNewArrival.products.map(
-            (item) => ({
-              ...item.toObject(),
-
-              image: getImageUrl(
-                req,
-                item.image
-              ),
-            })
-          ),
-      },
-    });
-  } catch (error) {
-    console.error("==========================================");
-    console.error("CREATE NEW ARRIVAL ERROR");
-    console.error(error);
-    console.error("==========================================");
-
-    deleteUploadedFiles(req);
-
-    // ========================================================
-    // MONGOOSE VALIDATION ERROR
-    // ========================================================
-
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        success: false,
-        message: "New Arrival validation failed",
-        errors: Object.values(error.errors).map(
-          (err) => err.message
-        ),
-      });
-    }
-
-    // ========================================================
-    // DUPLICATE KEY ERROR
-    // ========================================================
-
-    if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: "Duplicate New Arrival data",
-        error: error.keyValue,
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-      error: error.message,
-    });
-  }
-};
-
-// ============================================================
-// GET ALL NEW ARRIVALS
-// ============================================================
-// GET /api/newArrivals
-// ============================================================
-
-const getAllNewArrivals = async (req, res) => {
-  try {
-    const newArrivals =
-      await NewArrival.find()
-        .populate(
-          "featuredProduct",
-          "name title slug images"
-        )
-        .populate(
-          "products.product",
-          "name title slug images"
-        )
-        .sort({
-          createdAt: -1,
-        });
-
-    const data = newArrivals.map(
-      (item) => ({
-        ...item.toObject(),
-
-        heroImage: getImageUrl(
-          req,
-          item.heroImage
-        ),
-
-        products:
-          item.products.map(
-            (productItem) => ({
-              ...productItem.toObject(),
-
-              image: getImageUrl(
-                req,
-                productItem.image
-              ),
-            })
-          ),
-      })
-    );
-
-    return res.status(200).json({
-      success: true,
-      count: data.length,
-      data,
-    });
-  } catch (error) {
-    console.error(
-      "Get New Arrivals Error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-      error: error.message,
-    });
-  }
-};
-
-// ============================================================
-// GET NEW ARRIVAL BY ID
-// ============================================================
-// GET /api/newArrivals/:id
-// ============================================================
-
-const getNewArrivalById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // ========================================================
-    // VALIDATE ID
-    // ========================================================
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid New Arrival ID",
-      });
-    }
-
-    // ========================================================
-    // FIND
-    // ========================================================
-
-    const newArrival =
-      await NewArrival.findById(id)
-        .populate(
-          "featuredProduct",
-          "name title slug images"
-        )
-        .populate(
-          "products.product",
-          "name title slug images"
+      const error =
+        new Error(
+          "One or more products were not found"
         );
 
-    if (!newArrival) {
-      return res.status(404).json({
-        success: false,
-        message: "New Arrival not found",
-      });
+      error.missingProducts =
+        missingIds;
+
+      throw error;
     }
+  };
 
-    return res.status(200).json({
-      success: true,
+// ==========================================================
+// CREATE NEW ARRIVAL
+// ==========================================================
 
-      data: {
-        ...newArrival.toObject(),
+const createNewArrival =
+  async (req, res) => {
+    let uploadedFiles =
+      req.files || [];
 
-        heroImage: getImageUrl(
-          req,
-          newArrival.heroImage
-        ),
+    try {
+      console.log(
+        "CREATE NEW ARRIVAL"
+      );
 
-        products:
-          newArrival.products.map(
-            (item) => ({
-              ...item.toObject(),
+      console.log(
+        "Body:",
+        req.body
+      );
 
-              image: getImageUrl(
-                req,
-                item.image
-              ),
-            })
-          ),
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Get New Arrival Error:",
-      error
-    );
+      console.log(
+        "Files:",
+        uploadedFiles
+      );
 
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-      error: error.message,
-    });
-  }
-};
+      const {
+        title,
+        subtitle,
+        description,
+        featuredProduct,
+        products,
+      } = req.body;
 
-// ============================================================
-// UPDATE NEW ARRIVAL
-// ============================================================
-// PUT /api/newArrivals/:id
-// ============================================================
+      // --------------------------------
+      // TITLE
+      // --------------------------------
 
-const updateNewArrival = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // ========================================================
-    // VALIDATE ID
-    // ========================================================
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      deleteUploadedFiles(req);
-
-      return res.status(400).json({
-        success: false,
-        message: "Invalid New Arrival ID",
-      });
-    }
-
-    // ========================================================
-    // FIND EXISTING
-    // ========================================================
-
-    const existing =
-      await NewArrival.findById(id);
-
-    if (!existing) {
-      deleteUploadedFiles(req);
-
-      return res.status(404).json({
-        success: false,
-        message: "New Arrival not found",
-      });
-    }
-
-    const {
-      title,
-      subtitle,
-      description,
-      featuredProduct,
-      products,
-    } = req.body;
-
-    // ========================================================
-    // UPDATE BASIC FIELDS
-    // ========================================================
-
-    if (
-      title !== undefined &&
-      !title.trim()
-    ) {
-      deleteUploadedFiles(req);
-
-      return res.status(400).json({
-        success: false,
-        message: "Title cannot be empty",
-      });
-    }
-
-    if (title !== undefined) {
-      existing.title = title.trim();
-    }
-
-    if (subtitle !== undefined) {
-      existing.subtitle =
-        subtitle.trim();
-    }
-
-    if (description !== undefined) {
-      existing.description =
-        description.trim();
-    }
-
-    // ========================================================
-    // FEATURED PRODUCT
-    // ========================================================
-
-    if (featuredProduct !== undefined) {
       if (
-        featuredProduct !== "" &&
-        !mongoose.Types.ObjectId.isValid(
-          featuredProduct
-        )
+        !title ||
+        !title.trim()
       ) {
-        deleteUploadedFiles(req);
+        deleteUploadedFiles(
+          uploadedFiles
+        );
 
-        return res.status(400).json({
+        return res.status(
+          400
+        ).json({
           success: false,
-          message: "Invalid featured product ID",
+          message:
+            "Title is required",
         });
       }
 
-      if (featuredProduct) {
-        const productExists =
-          await Product.findById(
-            featuredProduct
-          );
+      // --------------------------------
+      // PARSE PRODUCTS
+      // --------------------------------
 
-        if (!productExists) {
-          deleteUploadedFiles(req);
-
-          return res.status(404).json({
-            success: false,
-            message: "Featured product not found",
-          });
-        }
-
-        existing.featuredProduct =
-          featuredProduct;
-      } else {
-        existing.featuredProduct = null;
-      }
-    }
-
-    // ========================================================
-    // PRODUCTS
-    // ========================================================
-
-    if (products !== undefined) {
       let parsedProducts;
 
       try {
         parsedProducts =
-          parseProducts(products);
+          parseProducts(
+            products
+          );
       } catch (error) {
-        deleteUploadedFiles(req);
+        deleteUploadedFiles(
+          uploadedFiles
+        );
 
-        return res.status(400).json({
+        return res.status(
+          400
+        ).json({
           success: false,
-          message: "Invalid products JSON format",
-          error: error.message,
+          message:
+            "Invalid products JSON format",
+          error:
+            error.details,
+          example:
+            '[{"product":"PRODUCT_ID","displayOrder":1,"isFeatured":true}]',
         });
       }
 
-      const productValidation =
+      // --------------------------------
+      // VALIDATE PRODUCTS
+      // --------------------------------
+
+      try {
         await validateProducts(
           parsedProducts
         );
+      } catch (error) {
+        deleteUploadedFiles(
+          uploadedFiles
+        );
 
-      if (!productValidation.valid) {
-        deleteUploadedFiles(req);
-
-        return res.status(400).json({
+        return res.status(
+          400
+        ).json({
           success: false,
           message:
-            productValidation.message,
+            error.message,
+          missingProducts:
+            error.missingProducts ||
+            undefined,
         });
       }
 
-      const productImages =
-        req.files?.productImages || [];
+      // --------------------------------
+      // FEATURED PRODUCT
+      // --------------------------------
 
-      const oldProducts =
-        existing.products || [];
+      if (
+        featuredProduct
+      ) {
+        if (
+          !mongoose.Types.ObjectId.isValid(
+            featuredProduct
+          )
+        ) {
+          deleteUploadedFiles(
+            uploadedFiles
+          );
+
+          return res.status(
+            400
+          ).json({
+            success: false,
+            message:
+              "Invalid featuredProduct ID",
+          });
+        }
+
+        const product =
+          await Product.findById(
+            featuredProduct
+          );
+
+        if (!product) {
+          deleteUploadedFiles(
+            uploadedFiles
+          );
+
+          return res.status(
+            404
+          ).json({
+            success: false,
+            message:
+              "Featured product not found",
+          });
+        }
+      }
+
+      // --------------------------------
+      // PRODUCT IMAGES
+      // --------------------------------
+
+      const productImages =
+        Array.isArray(
+          req.files
+        )
+          ? req.files
+          : [];
+
+      // --------------------------------
+      // MAX 4 IMAGES
+      // --------------------------------
+
+      if (
+        productImages.length >
+        4
+      ) {
+        deleteUploadedFiles(
+          productImages
+        );
+
+        return res.status(
+          400
+        ).json({
+          success: false,
+          message:
+            "Maximum 4 product images are allowed",
+        });
+      }
+
+      // --------------------------------
+      // IMAGE COUNT SHOULD NOT EXCEED
+      // PRODUCT COUNT
+      // --------------------------------
+
+      if (
+        productImages.length >
+        parsedProducts.length
+      ) {
+        deleteUploadedFiles(
+          productImages
+        );
+
+        return res.status(
+          400
+        ).json({
+          success: false,
+          message:
+            "Number of images cannot exceed number of products",
+        });
+      }
+
+      // --------------------------------
+      // CREATE PRODUCT ARRAY
+      // --------------------------------
 
       const finalProducts =
         parsedProducts.map(
           (item, index) => {
-            const newImage =
-              productImages[index];
-
-            let imagePath = null;
-
-            // ------------------------------------------------
-            // NEW IMAGE UPLOADED
-            // ------------------------------------------------
-
-            if (newImage) {
-              imagePath = path
-                .relative(
-                  process.cwd(),
-                  newImage.path
-                )
-                .replace(/\\/g, "/");
-
-              // Delete old image for same position
-              if (
-                oldProducts[index]?.image
-              ) {
-                deleteLocalFile(
-                  oldProducts[index].image
-                );
-              }
-            } else {
-              // ------------------------------------------------
-              // KEEP OLD IMAGE
-              // ------------------------------------------------
-
-              imagePath =
-                oldProducts[index]?.image ||
-                null;
-            }
+            const image =
+              productImages[
+                index
+              ];
 
             return {
-              product: item.product,
+              product:
+                item.product,
 
               displayOrder:
-                item.displayOrder !==
-                undefined
-                  ? Number(
-                      item.displayOrder
-                    )
-                  : index + 1,
+                item.displayOrder ||
+                index + 1,
 
               isFeatured:
-                item.isFeatured === true,
+                item.isFeatured ===
+                true,
 
-              image: imagePath,
+              image: image
+                ? path
+                    .relative(
+                      process.cwd(),
+                      image.path
+                    )
+                    .replace(
+                      /\\/g,
+                      "/"
+                    )
+                : null,
             };
           }
         );
 
-      existing.products =
-        finalProducts;
-    }
+      // --------------------------------
+      // CREATE NEW ARRIVAL
+      // --------------------------------
 
-    // ========================================================
-    // HERO IMAGE UPDATE
-    // ========================================================
+      const newArrival =
+        await NewArrival.create(
+          {
+            title:
+              title.trim(),
 
-    const newHeroImage =
-      req.files?.heroImage?.[0];
+            subtitle:
+              subtitle?.trim() ||
+              "",
 
-    if (newHeroImage) {
-      // Delete old hero image
-      if (existing.heroImage) {
-        deleteLocalFile(
-          existing.heroImage
-        );
-      }
+            description:
+              description?.trim() ||
+              "",
 
-      existing.heroImage = path
-        .relative(
-          process.cwd(),
-          newHeroImage.path
-        )
-        .replace(/\\/g, "/");
-    }
+            featuredProduct:
+              featuredProduct ||
+              null,
 
-    // ========================================================
-    // SAVE
-    // ========================================================
-
-    await existing.save();
-
-    // ========================================================
-    // POPULATE
-    // ========================================================
-
-    const updated =
-      await NewArrival.findById(id)
-        .populate(
-          "featuredProduct",
-          "name title slug images"
-        )
-        .populate(
-          "products.product",
-          "name title slug images"
+            products:
+              finalProducts,
+          }
         );
 
-    // ========================================================
-    // RESPONSE
-    // ========================================================
+      // --------------------------------
+      // POPULATE
+      // --------------------------------
 
-    return res.status(200).json({
-      success: true,
-      message: "New Arrival updated successfully",
+      const populated =
+        await NewArrival.findById(
+          newArrival._id
+        )
+          .populate(
+            "featuredProduct"
+          )
+          .populate(
+            "products.product"
+          );
 
-      data: {
-        ...updated.toObject(),
+      // --------------------------------
+      // RESPONSE
+      // --------------------------------
 
-        heroImage: getImageUrl(
-          req,
-          updated.heroImage
-        ),
+      const responseData =
+        populated.toObject();
 
-        products:
-          updated.products.map(
-            (item) => ({
-              ...item.toObject(),
+      responseData.products =
+        responseData.products.map(
+          (item) => ({
+            ...item,
 
-              image: getImageUrl(
+            image:
+              getImageUrl(
                 req,
                 item.image
               ),
-            })
-          ),
-      },
-    });
-  } catch (error) {
-    console.error("==========================================");
-    console.error("UPDATE NEW ARRIVAL ERROR");
-    console.error(error);
-    console.error("==========================================");
+          })
+        );
 
-    deleteUploadedFiles(req);
+      return res.status(
+        201
+      ).json({
+        success: true,
 
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        success: false,
-        message: "New Arrival validation failed",
-        errors: Object.values(
-          error.errors
-        ).map(
-          (err) => err.message
-        ),
+        message:
+          "New Arrival created successfully",
+
+        data:
+          responseData,
       });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-      error: error.message,
-    });
-  }
-};
-
-// ============================================================
-// DELETE NEW ARRIVAL
-// ============================================================
-// DELETE /api/newArrivals/:id
-// ============================================================
-
-const deleteNewArrival = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // ========================================================
-    // VALIDATE ID
-    // ========================================================
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid New Arrival ID",
-      });
-    }
-
-    // ========================================================
-    // FIND
-    // ========================================================
-
-    const newArrival =
-      await NewArrival.findById(id);
-
-    if (!newArrival) {
-      return res.status(404).json({
-        success: false,
-        message: "New Arrival not found",
-      });
-    }
-
-    // ========================================================
-    // DELETE HERO IMAGE
-    // ========================================================
-
-    if (newArrival.heroImage) {
-      deleteLocalFile(
-        newArrival.heroImage
+    } catch (error) {
+      console.error(
+        "CREATE NEW ARRIVAL ERROR:",
+        error
       );
+
+      deleteUploadedFiles(
+        uploadedFiles
+      );
+
+      return res.status(
+        500
+      ).json({
+        success: false,
+
+        message:
+          "Failed to create New Arrival",
+
+        error:
+          error.message,
+      });
     }
+  };
 
-    // ========================================================
-    // DELETE PRODUCT IMAGES
-    // ========================================================
+// ==========================================================
+// GET ALL NEW ARRIVALS
+// ==========================================================
 
-    if (newArrival.products) {
+const getAllNewArrivals =
+  async (req, res) => {
+    try {
+      const newArrivals =
+        await NewArrival.find()
+          .populate(
+            "featuredProduct"
+          )
+          .populate(
+            "products.product"
+          )
+          .sort({
+            createdAt: -1,
+          });
+
+      const data =
+        newArrivals.map(
+          (arrival) => {
+            const item =
+              arrival.toObject();
+
+            item.products =
+              item.products.map(
+                (product) => ({
+                  ...product,
+
+                  image:
+                    getImageUrl(
+                      req,
+                      product.image
+                    ),
+                })
+              );
+
+            return item;
+          }
+        );
+
+      return res.status(
+        200
+      ).json({
+        success: true,
+
+        count:
+          data.length,
+
+        data,
+      });
+    } catch (error) {
+      console.error(
+        "GET ALL NEW ARRIVALS ERROR:",
+        error
+      );
+
+      return res.status(
+        500
+      ).json({
+        success: false,
+
+        message:
+          "Failed to fetch New Arrivals",
+
+        error:
+          error.message,
+      });
+    }
+  };
+
+// ==========================================================
+// GET NEW ARRIVAL BY ID
+// ==========================================================
+
+const getNewArrivalById =
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      // --------------------------------
+      // VALIDATE ID
+      // --------------------------------
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(
+          400
+        ).json({
+          success: false,
+          message:
+            "Invalid New Arrival ID",
+        });
+      }
+
+      // --------------------------------
+      // FIND
+      // --------------------------------
+
+      const newArrival =
+        await NewArrival.findById(
+          id
+        )
+          .populate(
+            "featuredProduct"
+          )
+          .populate(
+            "products.product"
+          );
+
+      if (!newArrival) {
+        return res.status(
+          404
+        ).json({
+          success: false,
+          message:
+            "New Arrival not found",
+        });
+      }
+
+      // --------------------------------
+      // RESPONSE
+      // --------------------------------
+
+      const data =
+        newArrival.toObject();
+
+      data.products =
+        data.products.map(
+          (product) => ({
+            ...product,
+
+            image:
+              getImageUrl(
+                req,
+                product.image
+              ),
+          })
+        );
+
+      return res.status(
+        200
+      ).json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      console.error(
+        "GET NEW ARRIVAL ERROR:",
+        error
+      );
+
+      return res.status(
+        500
+      ).json({
+        success: false,
+
+        message:
+          "Failed to fetch New Arrival",
+
+        error:
+          error.message,
+      });
+    }
+  };
+
+// ==========================================================
+// UPDATE NEW ARRIVAL
+// ==========================================================
+
+const updateNewArrival =
+  async (req, res) => {
+    const uploadedFiles =
+      req.files || [];
+
+    try {
+      const { id } =
+        req.params;
+
+      // --------------------------------
+      // VALIDATE ID
+      // --------------------------------
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        deleteUploadedFiles(
+          uploadedFiles
+        );
+
+        return res.status(
+          400
+        ).json({
+          success: false,
+          message:
+            "Invalid New Arrival ID",
+        });
+      }
+
+      // --------------------------------
+      // FIND EXISTING
+      // --------------------------------
+
+      const existing =
+        await NewArrival.findById(
+          id
+        );
+
+      if (!existing) {
+        deleteUploadedFiles(
+          uploadedFiles
+        );
+
+        return res.status(
+          404
+        ).json({
+          success: false,
+          message:
+            "New Arrival not found",
+        });
+      }
+
+      const {
+        title,
+        subtitle,
+        description,
+        featuredProduct,
+        products,
+      } = req.body;
+
+      // --------------------------------
+      // TITLE
+      // --------------------------------
+
+      if (
+        title !== undefined
+      ) {
+        if (
+          !title.trim()
+        ) {
+          deleteUploadedFiles(
+            uploadedFiles
+          );
+
+          return res.status(
+            400
+          ).json({
+            success: false,
+            message:
+              "Title cannot be empty",
+          });
+        }
+
+        existing.title =
+          title.trim();
+      }
+
+      // --------------------------------
+      // SUBTITLE
+      // --------------------------------
+
+      if (
+        subtitle !==
+        undefined
+      ) {
+        existing.subtitle =
+          subtitle.trim();
+      }
+
+      // --------------------------------
+      // DESCRIPTION
+      // --------------------------------
+
+      if (
+        description !==
+        undefined
+      ) {
+        existing.description =
+          description.trim();
+      }
+
+      // --------------------------------
+      // FEATURED PRODUCT
+      // --------------------------------
+
+      if (
+        featuredProduct !==
+        undefined
+      ) {
+        if (
+          featuredProduct &&
+          !mongoose.Types.ObjectId.isValid(
+            featuredProduct
+          )
+        ) {
+          deleteUploadedFiles(
+            uploadedFiles
+          );
+
+          return res.status(
+            400
+          ).json({
+            success: false,
+            message:
+              "Invalid featuredProduct ID",
+          });
+        }
+
+        if (
+          featuredProduct
+        ) {
+          const product =
+            await Product.findById(
+              featuredProduct
+            );
+
+          if (!product) {
+            deleteUploadedFiles(
+              uploadedFiles
+            );
+
+            return res.status(
+              404
+            ).json({
+              success: false,
+              message:
+                "Featured product not found",
+            });
+          }
+        }
+
+        existing.featuredProduct =
+          featuredProduct ||
+          null;
+      }
+
+      // --------------------------------
+      // UPDATE PRODUCTS
+      // --------------------------------
+
+      if (
+        products !==
+        undefined
+      ) {
+        let parsedProducts;
+
+        try {
+          parsedProducts =
+            parseProducts(
+              products
+            );
+        } catch (error) {
+          deleteUploadedFiles(
+            uploadedFiles
+          );
+
+          return res.status(
+            400
+          ).json({
+            success: false,
+            message:
+              "Invalid products JSON format",
+            error:
+              error.details,
+          });
+        }
+
+        // --------------------------------
+        // VALIDATE
+        // --------------------------------
+
+        try {
+          await validateProducts(
+            parsedProducts
+          );
+        } catch (error) {
+          deleteUploadedFiles(
+            uploadedFiles
+          );
+
+          return res.status(
+            400
+          ).json({
+            success: false,
+            message:
+              error.message,
+
+            missingProducts:
+              error.missingProducts ||
+              undefined,
+          });
+        }
+
+        const productImages =
+          Array.isArray(
+            req.files
+          )
+            ? req.files
+            : [];
+
+        // --------------------------------
+        // IMAGE COUNT
+        // --------------------------------
+
+        if (
+          productImages.length >
+          4
+        ) {
+          deleteUploadedFiles(
+            productImages
+          );
+
+          return res.status(
+            400
+          ).json({
+            success: false,
+            message:
+              "Maximum 4 product images are allowed",
+          });
+        }
+
+        if (
+          productImages.length >
+          parsedProducts.length
+        ) {
+          deleteUploadedFiles(
+            productImages
+          );
+
+          return res.status(
+            400
+          ).json({
+            success: false,
+            message:
+              "Number of images cannot exceed number of products",
+          });
+        }
+
+        // --------------------------------
+        // DELETE OLD IMAGES
+        // --------------------------------
+
+        existing.products.forEach(
+          (oldProduct) => {
+            if (
+              oldProduct.image
+            ) {
+              deleteLocalFile(
+                oldProduct.image
+              );
+            }
+          }
+        );
+
+        // --------------------------------
+        // CREATE UPDATED PRODUCTS
+        // --------------------------------
+
+        existing.products =
+          parsedProducts.map(
+            (
+              item,
+              index
+            ) => {
+              const image =
+                productImages[
+                  index
+                ];
+
+              return {
+                product:
+                  item.product,
+
+                displayOrder:
+                  item.displayOrder ||
+                  index + 1,
+
+                isFeatured:
+                  item.isFeatured ===
+                  true,
+
+                image: image
+                  ? path
+                      .relative(
+                        process.cwd(),
+                        image.path
+                      )
+                      .replace(
+                        /\\/g,
+                        "/"
+                      )
+                  : null,
+              };
+            }
+          );
+      }
+
+      // --------------------------------
+      // SAVE
+      // --------------------------------
+
+      await existing.save();
+
+      // --------------------------------
+      // POPULATE
+      // --------------------------------
+
+      const populated =
+        await NewArrival.findById(
+          existing._id
+        )
+          .populate(
+            "featuredProduct"
+          )
+          .populate(
+            "products.product"
+          );
+
+      const data =
+        populated.toObject();
+
+      data.products =
+        data.products.map(
+          (product) => ({
+            ...product,
+
+            image:
+              getImageUrl(
+                req,
+                product.image
+              ),
+          })
+        );
+
+      return res.status(
+        200
+      ).json({
+        success: true,
+
+        message:
+          "New Arrival updated successfully",
+
+        data,
+      });
+    } catch (error) {
+      console.error(
+        "UPDATE NEW ARRIVAL ERROR:",
+        error
+      );
+
+      deleteUploadedFiles(
+        uploadedFiles
+      );
+
+      return res.status(
+        500
+      ).json({
+        success: false,
+
+        message:
+          "Failed to update New Arrival",
+
+        error:
+          error.message,
+      });
+    }
+  };
+
+// ==========================================================
+// DELETE NEW ARRIVAL
+// ==========================================================
+
+const deleteNewArrival =
+  async (req, res) => {
+    try {
+      const { id } =
+        req.params;
+
+      // --------------------------------
+      // VALIDATE ID
+      // --------------------------------
+
+      if (
+        !mongoose.Types.ObjectId.isValid(
+          id
+        )
+      ) {
+        return res.status(
+          400
+        ).json({
+          success: false,
+          message:
+            "Invalid New Arrival ID",
+        });
+      }
+
+      // --------------------------------
+      // FIND
+      // --------------------------------
+
+      const newArrival =
+        await NewArrival.findById(
+          id
+        );
+
+      if (!newArrival) {
+        return res.status(
+          404
+        ).json({
+          success: false,
+          message:
+            "New Arrival not found",
+        });
+      }
+
+      // --------------------------------
+      // DELETE PRODUCT IMAGES
+      // --------------------------------
+
       newArrival.products.forEach(
-        (item) => {
-          if (item.image) {
+        (product) => {
+          if (
+            product.image
+          ) {
             deleteLocalFile(
-              item.image
+              product.image
             );
           }
         }
       );
+
+      // --------------------------------
+      // DELETE DATABASE RECORD
+      // --------------------------------
+
+      await NewArrival.findByIdAndDelete(
+        id
+      );
+
+      return res.status(
+        200
+      ).json({
+        success: true,
+
+        message:
+          "New Arrival deleted successfully",
+      });
+    } catch (error) {
+      console.error(
+        "DELETE NEW ARRIVAL ERROR:",
+        error
+      );
+
+      return res.status(
+        500
+      ).json({
+        success: false,
+
+        message:
+          "Failed to delete New Arrival",
+
+        error:
+          error.message,
+      });
     }
+  };
 
-    // ========================================================
-    // DELETE DOCUMENT
-    // ========================================================
-
-    await NewArrival.findByIdAndDelete(id);
-
-    // ========================================================
-    // RESPONSE
-    // ========================================================
-
-    return res.status(200).json({
-      success: true,
-      message: "New Arrival deleted successfully",
-    });
-  } catch (error) {
-    console.error(
-      "Delete New Arrival Error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-      error: error.message,
-    });
-  }
-};
-
-// ============================================================
+// ==========================================================
 // EXPORT
-// ============================================================
+// ==========================================================
 
 module.exports = {
   createNewArrival,
