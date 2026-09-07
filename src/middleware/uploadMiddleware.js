@@ -26,6 +26,11 @@ const newArrivalUploadDir = path.join(
   "uploads/new-arrivals"
 );
 
+const trendingProductUploadDir = path.join(
+  process.cwd(),
+  "uploads/trending-products"
+);
+
 // ==========================================================
 // CREATE DIRECTORIES IF NOT EXISTS
 // ==========================================================
@@ -35,6 +40,7 @@ const newArrivalUploadDir = path.join(
   subCategoryUploadDir,
   productUploadDir,
   newArrivalUploadDir,
+  trendingProductUploadDir,
 ].forEach((directory) => {
   if (!fs.existsSync(directory)) {
     fs.mkdirSync(directory, {
@@ -48,7 +54,9 @@ const newArrivalUploadDir = path.join(
 // ==========================================================
 
 const generateFileName = (file) => {
-  const extension = path.extname(file.originalname);
+  const extension = path
+    .extname(file.originalname)
+    .toLowerCase();
 
   const uniqueName =
     `${Date.now()}-` +
@@ -74,13 +82,19 @@ const imageFileFilter = (req, file, cb) => {
     .extname(file.originalname)
     .toLowerCase();
 
-  console.log("==========================================");
+  console.log(
+    "=========================================="
+  );
+
   console.log("IMAGE UPLOAD");
   console.log("Field name :", file.fieldname);
   console.log("File name  :", file.originalname);
   console.log("Extension  :", extension);
   console.log("MIME type  :", file.mimetype);
-  console.log("==========================================");
+
+  console.log(
+    "=========================================="
+  );
 
   if (!allowedExtensions.includes(extension)) {
     return cb(
@@ -246,6 +260,35 @@ const newArrivalStorage =
   });
 
 // ==========================================================
+// STORAGE - TRENDING PRODUCT
+// ==========================================================
+
+const trendingProductStorage =
+  multer.diskStorage({
+    destination: function (
+      req,
+      file,
+      cb
+    ) {
+      cb(
+        null,
+        trendingProductUploadDir
+      );
+    },
+
+    filename: function (
+      req,
+      file,
+      cb
+    ) {
+      cb(
+        null,
+        generateFileName(file)
+      );
+    },
+  });
+
+// ==========================================================
 // UPLOAD LIMITS
 // ==========================================================
 
@@ -270,6 +313,7 @@ const uploadCategoryImage =
 
     limits: {
       ...imageUploadLimits,
+
       files: 1,
     },
   });
@@ -280,13 +324,15 @@ const uploadCategoryImage =
 
 const uploadSubCategoryImage =
   multer({
-    storage: subCategoryStorage,
+    storage:
+      subCategoryStorage,
 
     fileFilter:
       imageFileFilter,
 
     limits: {
       ...imageUploadLimits,
+
       files: 1,
     },
   });
@@ -297,13 +343,15 @@ const uploadSubCategoryImage =
 
 const uploadProductMedia =
   multer({
-    storage: productStorage,
+    storage:
+      productStorage,
 
     fileFilter:
       productMediaFileFilter,
 
     limits: {
       ...productMediaUploadLimits,
+
       files: 10,
     },
   });
@@ -312,23 +360,20 @@ const uploadProductMedia =
 // NEW ARRIVAL IMAGE UPLOAD
 // ==========================================================
 //
-// Maximum 4 images
+// Dynamic number of products is handled by the controller.
 //
-// All files must use:
+// This allows maximum 4 images for New Arrival.
+//
+// Field name:
+//
 // productImages
-//
-// Example:
-//
-// productImages -> image1.png
-// productImages -> image2.png
-// productImages -> image3.png
-// productImages -> image4.png
 //
 // ==========================================================
 
 const uploadNewArrivalImage =
   multer({
-    storage: newArrivalStorage,
+    storage:
+      newArrivalStorage,
 
     fileFilter:
       imageFileFilter,
@@ -336,8 +381,47 @@ const uploadNewArrivalImage =
     limits: {
       ...imageUploadLimits,
 
-      // Maximum 4 images
       files: 4,
+    },
+  });
+
+// ==========================================================
+// TRENDING PRODUCT IMAGE UPLOAD
+// ==========================================================
+//
+// Trending Products are dynamic.
+//
+// There is NO 5-product restriction.
+//
+// Multer allows maximum 50 images in ONE request
+// as a technical upload safety limit.
+//
+// Field name:
+//
+// productImages
+//
+// Example:
+//
+// productImages -> image1.png
+// productImages -> image2.png
+// productImages -> image3.png
+// ...
+//
+// ==========================================================
+
+const uploadTrendingProductImage =
+  multer({
+    storage:
+      trendingProductStorage,
+
+    fileFilter:
+      imageFileFilter,
+
+    limits: {
+      ...imageUploadLimits,
+
+      // Technical upload limit
+      files: 50,
     },
   });
 
@@ -351,17 +435,29 @@ const handleUploadError = (
   res,
   next
 ) => {
-  if (err instanceof multer.MulterError) {
+  if (
+    err instanceof
+    multer.MulterError
+  ) {
+    // ------------------------------------------------------
+    // TOO MANY FILES
+    // ------------------------------------------------------
+
     if (
       err.code ===
       "LIMIT_FILE_COUNT"
     ) {
       return res.status(400).json({
         success: false,
+
         message:
-          "Maximum 4 images are allowed for New Arrival",
+          "Maximum 50 images are allowed in one upload request",
       });
     }
+
+    // ------------------------------------------------------
+    // FILE TOO LARGE
+    // ------------------------------------------------------
 
     if (
       err.code ===
@@ -369,10 +465,15 @@ const handleUploadError = (
     ) {
       return res.status(400).json({
         success: false,
+
         message:
           "Image size cannot exceed 5 MB",
       });
     }
+
+    // ------------------------------------------------------
+    // UNEXPECTED FILE
+    // ------------------------------------------------------
 
     if (
       err.code ===
@@ -380,21 +481,34 @@ const handleUploadError = (
     ) {
       return res.status(400).json({
         success: false,
+
         message:
           `Unexpected file field: ${err.field}`,
       });
     }
 
+    // ------------------------------------------------------
+    // OTHER MULTER ERROR
+    // ------------------------------------------------------
+
     return res.status(400).json({
       success: false,
-      message: err.message,
+
+      message:
+        err.message,
     });
   }
+
+  // ========================================================
+  // NORMAL ERROR
+  // ========================================================
 
   if (err) {
     return res.status(400).json({
       success: false,
-      message: err.message,
+
+      message:
+        err.message,
     });
   }
 
@@ -410,5 +524,6 @@ module.exports = {
   uploadSubCategoryImage,
   uploadProductMedia,
   uploadNewArrivalImage,
+  uploadTrendingProductImage,
   handleUploadError,
 };
