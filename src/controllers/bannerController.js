@@ -1,13 +1,47 @@
+
 const Banner = require("../models/bannerModel");
+const fs = require("fs");
+const path = require("path");
 
-// =============================================================
+// ==========================================================
 // CREATE BANNER
-// POST /api/banners/create
-// =============================================================
-
-exports.createBanner = async (req, res) => {
+// POST /api/banners
+// ==========================================================
+const createBanner = async (req, res) => {
   try {
-    const banner = await Banner.create(req.body);
+    const { bannerType } = req.body;
+
+    // Validate banner type
+    if (!bannerType) {
+      return res.status(400).json({
+        success: false,
+        message: "bannerType is required",
+      });
+    }
+
+    if (!["offer", "festival", "dailyUsage"].includes(bannerType)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid bannerType. Allowed values: offer, festival, dailyUsage",
+      });
+    }
+
+    // Validate image
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Banner image is required",
+      });
+    }
+
+    // Create image URL
+    const imageURL = `/uploads/banners/${req.file.filename}`;
+
+    const banner = await Banner.create({
+      bannerType,
+      imageURL,
+    });
 
     return res.status(201).json({
       success: true,
@@ -15,7 +49,20 @@ exports.createBanner = async (req, res) => {
       data: banner,
     });
   } catch (error) {
-    console.error("createBanner:", error);
+    console.error("CREATE BANNER ERROR:", error);
+
+    // Delete uploaded image if database operation fails
+    if (req.file) {
+      const filePath = path.join(
+        process.cwd(),
+        "uploads/banners",
+        req.file.filename
+      );
+
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
 
     return res.status(500).json({
       success: false,
@@ -25,76 +72,23 @@ exports.createBanner = async (req, res) => {
   }
 };
 
-// =============================================================
-// GET ACTIVE BANNERS
-// GET /api/banners/active
-// =============================================================
-
-exports.getActiveBanners = async (req, res) => {
-  try {
-    const now = new Date();
-
-    const banners = await Banner.find({
-      isActive: true,
-      isDeleted: false,
-
-      $or: [
-        {
-          startDate: null,
-          endDate: null,
-        },
-        {
-          startDate: { $lte: now },
-          endDate: { $gte: now },
-        },
-        {
-          startDate: null,
-          endDate: { $gte: now },
-        },
-        {
-          startDate: { $lte: now },
-          endDate: null,
-        },
-      ],
-    }).sort({
-      displayOrder: 1,
-      createdAt: -1,
-    });
-
-    return res.json({
-      success: true,
-      count: banners.length,
-      data: banners,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch banners",
-      error: error.message,
-    });
-  }
-};
-
-// =============================================================
-// GET ALL BANNERS - ADMIN
+// ==========================================================
+// GET ALL BANNERS
 // GET /api/banners
-// =============================================================
-
-exports.getAllBanners = async (req, res) => {
+// ==========================================================
+const getAllBanners = async (req, res) => {
   try {
-    const banners = await Banner.find({
-      isDeleted: false,
-    }).sort({
-      displayOrder: 1,
-      createdAt: -1,
-    });
+    const banners = await Banner.find();
 
-    return res.json({
+    return res.status(200).json({
       success: true,
+      message: "Banners fetched successfully",
       count: banners.length,
       data: banners,
     });
   } catch (error) {
+    console.error("GET ALL BANNERS ERROR:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to fetch banners",
@@ -103,17 +97,15 @@ exports.getAllBanners = async (req, res) => {
   }
 };
 
-// =============================================================
-// GET BANNER BY ID
+// ==========================================================
+// GET SINGLE BANNER
 // GET /api/banners/:id
-// =============================================================
-
-exports.getBannerById = async (req, res) => {
+// ==========================================================
+const getBannerById = async (req, res) => {
   try {
-    const banner = await Banner.findOne({
-      _id: req.params.id,
-      isDeleted: false,
-    });
+    const { id } = req.params;
+
+    const banner = await Banner.findById(id);
 
     if (!banner) {
       return res.status(404).json({
@@ -122,11 +114,14 @@ exports.getBannerById = async (req, res) => {
       });
     }
 
-    return res.json({
+    return res.status(200).json({
       success: true,
+      message: "Banner fetched successfully",
       data: banner,
     });
   } catch (error) {
+    console.error("GET BANNER BY ID ERROR:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to fetch banner",
@@ -135,21 +130,16 @@ exports.getBannerById = async (req, res) => {
   }
 };
 
-// =============================================================
+// ==========================================================
 // UPDATE BANNER
-// PATCH /api/banners/:id
-// =============================================================
-
-exports.updateBanner = async (req, res) => {
+// PUT /api/banners/:id
+// ==========================================================
+const updateBanner = async (req, res) => {
   try {
-    const banner = await Banner.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
+    const { id } = req.params;
+    const { bannerType } = req.body;
+
+    const banner = await Banner.findById(id);
 
     if (!banner) {
       return res.status(404).json({
@@ -158,12 +148,68 @@ exports.updateBanner = async (req, res) => {
       });
     }
 
-    return res.json({
+    // Validate banner type if provided
+    if (
+      bannerType &&
+      !["offer", "festival", "dailyUsage"].includes(bannerType)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid bannerType. Allowed values: offer, festival, dailyUsage",
+      });
+    }
+
+    // Keep old image initially
+    const oldImageURL = banner.imageURL;
+
+    // Update banner type
+    if (bannerType) {
+      banner.bannerType = bannerType;
+    }
+
+    // If new image uploaded
+    if (req.file) {
+      banner.imageURL = `/uploads/banners/${req.file.filename}`;
+    }
+
+    banner.updatedAt = new Date();
+
+    await banner.save();
+
+    // Delete old image after successful database update
+    if (req.file && oldImageURL) {
+      const oldFilePath = path.join(
+        process.cwd(),
+        oldImageURL.replace(/^\/+/, "")
+      );
+
+      if (fs.existsSync(oldFilePath)) {
+        fs.unlinkSync(oldFilePath);
+      }
+    }
+
+    return res.status(200).json({
       success: true,
       message: "Banner updated successfully",
       data: banner,
     });
   } catch (error) {
+    console.error("UPDATE BANNER ERROR:", error);
+
+    // Delete newly uploaded image if update fails
+    if (req.file) {
+      const filePath = path.join(
+        process.cwd(),
+        "uploads/banners",
+        req.file.filename
+      );
+
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
     return res.status(500).json({
       success: false,
       message: "Failed to update banner",
@@ -172,28 +218,15 @@ exports.updateBanner = async (req, res) => {
   }
 };
 
-// =============================================================
+// ==========================================================
 // DELETE BANNER
 // DELETE /api/banners/:id
-// =============================================================
-
-exports.deleteBanner = async (req, res) => {
+// ==========================================================
+const deleteBanner = async (req, res) => {
   try {
-    const banner = await Banner.findByIdAndUpdate(
-      req.params.id,
-      {
-        isDeleted: true,
-        deletedAt: new Date(),
-        isActive: false,
-        deletedBy:
-          req.user?.id ||
-          req.user?._id ||
-          null,
-      },
-      {
-        new: true,
-      }
-    );
+    const { id } = req.params;
+
+    const banner = await Banner.findById(id);
 
     if (!banner) {
       return res.status(404).json({
@@ -202,11 +235,27 @@ exports.deleteBanner = async (req, res) => {
       });
     }
 
-    return res.json({
+    // Delete image from uploads folder
+    if (banner.imageURL) {
+      const imagePath = path.join(
+        process.cwd(),
+        banner.imageURL.replace(/^\/+/, "")
+      );
+
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+
+    await Banner.findByIdAndDelete(id);
+
+    return res.status(200).json({
       success: true,
       message: "Banner deleted successfully",
     });
   } catch (error) {
+    console.error("DELETE BANNER ERROR:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to delete banner",
@@ -214,3 +263,13 @@ exports.deleteBanner = async (req, res) => {
     });
   }
 };
+
+module.exports = {
+  createBanner,
+  getAllBanners,
+  getBannerById,
+  updateBanner,
+  deleteBanner,
+};
+
+
