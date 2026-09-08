@@ -1,59 +1,70 @@
+
 const express = require("express");
 
 const router = express.Router();
 
+// ==========================================================
+// IMPORT BANNER CONTROLLER
+// ==========================================================
+
 const {
   createBanner,
-  getActiveBanners,
   getAllBanners,
   getBannerById,
   updateBanner,
-  deleteBanner
+  deleteBanner,
 } = require("../controllers/bannerController");
 
-const { verifyToken } = require("../middleware/authMiddleware");
+// ==========================================================
+// IMPORT BANNER UPLOAD MIDDLEWARE
+// ==========================================================
 
-// =============================================================
-// CUSTOMER
-// =============================================================
+const {
+  uploadBannerImage,
+} = require("../middleware/uploadMiddleware");
 
-router.get(
-  "/active",
-  getActiveBanners
-);
+// ==========================================================
+// CREATE BANNER
+// POST /api/banners
+// ==========================================================
 
-// =============================================================
-// ADMIN
-// =============================================================
+router.post( "/create", uploadBannerImage.single("image"), createBanner );
 
-router.post(
-  "/create",
-  verifyToken,
-  createBanner
-);
+// ==========================================================
+// GET ALL BANNERS
+// GET /api/banners
+// ==========================================================
 
 router.get(
   "/all",
-  verifyToken,
   getAllBanners
 );
 
+// ==========================================================
+// GET SINGLE BANNER
+// GET /api/banners/:id
+// ==========================================================
+
 router.get(
   "/:id",
-  verifyToken,
   getBannerById
 );
 
-router.patch(
-  "/update/:id",
-  verifyToken,
-  updateBanner
-);
+// ==========================================================
+// UPDATE BANNER
+// PUT /api/banners/:id
+// ==========================================================
+router.put( "/update/:id", uploadBannerImage.single("image"), updateBanner );
+// ==========================================================
+// DELETE BANNER
+// DELETE /api/banners/:id
+// ==========================================================
 
 router.delete(
   "/delete/:id",
-  verifyToken,
   deleteBanner
 );
+
+
 
 module.exports = router;

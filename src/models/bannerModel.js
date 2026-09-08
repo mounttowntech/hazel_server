@@ -1,141 +1,52 @@
 const mongoose = require("mongoose");
 
-const bannerSchema = new mongoose.Schema(
-  {
-    // =========================================================
-    // BASIC INFORMATION
-    // =========================================================
-    title: {
-      type: String,
-      required: true,
-      trim: true,
-    },
 
-    subtitle: {
-      type: String,
-      trim: true,
-      default: "",
-    },
+const bannerListSchema = new mongoose.Schema({
 
-    description: {
-      type: String,
-      trim: true,
-      default: "",
-    },
-    // Add this inside your bannerSchema definition:
-    discountPercentage: {
-       type: Number,
-       default: null,
-    },
-    image: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+  bannerType: {
 
-    mobileImage: {
-      type: String,
-      trim: true,
-      default: "",
-    },
+    type: String,
 
-    // =========================================================
-    // BANNER TYPE
-    // =========================================================
-    bannerType: {
-      type: String,
-      enum: [
-        "HOME",
-        "CATEGORY",
-        "PRODUCT",
-        "OFFER",
-        "SALE",
-        "OTHER",
-      ],
-      default: "HOME",
-      index: true,
-    },
+    enum: [
 
-    // =========================================================
-    // REDIRECT
-    // =========================================================
-    redirectType: {
-      type: String,
-      enum: [
-        "NONE",
-        "PRODUCT",
-        "CATEGORY",
-        "BRAND",
-        "URL",
-      ],
-      default: "NONE",
-    },
+      "offer",
 
-    redirectId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: null,
-    },
+      "festival",
 
-    redirectUrl: {
-      type: String,
-      trim: true,
-      default: "",
-    },
+      "dailyUsage"
 
-    buttonText: {
-      type: String,
-      trim: true,
-      default: "",
-    },
+      //
 
-    // =========================================================
-    // DISPLAY
-    // =========================================================
-    displayOrder: {
-      type: Number,
-      default: 0,
-    },
+    ],
 
-    startDate: {
-      type: Date,
-      default: null,
-    },
+    required: true
 
-    endDate: {
-      type: Date,
-      default: null,
-    },
-
-    isActive: {
-      type: Boolean,
-      default: true,
-      index: true,
-    },
-
-    // =========================================================
-    // SOFT DELETE
-    // =========================================================
-    isDeleted: {
-      type: Boolean,
-      default: false,
-    },
-
-    deletedAt: {
-      type: Date,
-      default: null,
-    },
-
-    deletedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
   },
-  {
-    timestamps: true,
-  }
-);
 
-module.exports =
-  mongoose.models.Banner ||
-  mongoose.model("Banner", bannerSchema);
+  imageURL: {
+
+    type: String,
+
+    required: true
+
+  },
+
+  createdAt: {
+
+    type: Date,
+
+    default: Date.now
+
+  },
+
+  updatedAt: {
+
+    type: Date,
+
+    default: Date.now
+
+  }
+
+});
+
+module.exports = mongoose.model("Banner", bannerListSchema);
