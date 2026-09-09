@@ -16,7 +16,12 @@ app.use(
     credentials: true,
   })
 );
-
+app.use(
+  "/api/payments/webhook",
+  express.raw({
+    type: "application/json",
+  })
+);
 // ==========================================================
 // STATIC UPLOADS
 // ==========================================================
