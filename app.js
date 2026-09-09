@@ -199,7 +199,8 @@ app.use(
   require("./src/routes/dashboardRoutes")
 );
 app.use("/api/similar-products",require("./src/routes/similarProductRoutes"));
-
+app.use("/api/inventory",require("./src/routes/inventoryRoutes"));
+app.use("/api/stock-history",require("./src/routes/stockHistoryRoutes"))
 // ==========================================================
 // 404 HANDLER
 // ==========================================================

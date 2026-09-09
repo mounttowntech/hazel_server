@@ -141,7 +141,7 @@ inventorySchema.index({
 // PRE SAVE
 // ==========================================
 
-inventorySchema.pre("save", function (next) {
+inventorySchema.pre("save", function () {
   // Calculate available quantity
   this.availableQuantity = Math.max(
     0,
@@ -159,7 +159,7 @@ inventorySchema.pre("save", function (next) {
     this.stockStatus = "IN_STOCK";
   }
 
-  next();
+ 
 });
 
 module.exports =
