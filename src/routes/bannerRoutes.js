@@ -1,22 +1,22 @@
-
 const express = require("express");
 
 const router = express.Router();
 
 // ==========================================================
-// IMPORT BANNER CONTROLLER
+// BANNER CONTROLLER
 // ==========================================================
 
 const {
   createBanner,
   getAllBanners,
   getBannerById,
+  // getActiveBanners,
   updateBanner,
   deleteBanner,
 } = require("../controllers/bannerController");
 
 // ==========================================================
-// IMPORT BANNER UPLOAD MIDDLEWARE
+// BANNER UPLOAD MIDDLEWARE
 // ==========================================================
 
 const {
@@ -28,7 +28,11 @@ const {
 // POST /api/banners
 // ==========================================================
 
-router.post( "/create", uploadBannerImage.single("image"), createBanner );
+router.post(
+  "/create",
+  uploadBannerImage.single("image"),
+  createBanner
+);
 
 // ==========================================================
 // GET ALL BANNERS
@@ -41,7 +45,18 @@ router.get(
 );
 
 // ==========================================================
-// GET SINGLE BANNER
+// GET ACTIVE BANNERS
+// IMPORTANT: BEFORE /:id
+// GET /api/banners/active
+// ==========================================================
+
+// router.get(
+//   "/active",
+//   getActiveBanners
+// );
+
+// ==========================================================
+// GET BANNER BY ID
 // GET /api/banners/:id
 // ==========================================================
 
@@ -54,7 +69,13 @@ router.get(
 // UPDATE BANNER
 // PUT /api/banners/:id
 // ==========================================================
-router.put( "/update/:id", uploadBannerImage.single("image"), updateBanner );
+
+router.put(
+  "/update/:id",
+  uploadBannerImage.single("image"),
+  updateBanner
+);
+
 // ==========================================================
 // DELETE BANNER
 // DELETE /api/banners/:id
@@ -64,7 +85,5 @@ router.delete(
   "/delete/:id",
   deleteBanner
 );
-
-
 
 module.exports = router;
