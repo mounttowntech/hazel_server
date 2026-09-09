@@ -1,4 +1,3 @@
-
 const Product = require("../models/productModel");
 const mongoose = require("mongoose");
 const fs = require("fs");
@@ -117,17 +116,6 @@ const generateBarcode = async () => {
 // ============================================================
 // CALCULATE VARIANT QUANTITY
 // ============================================================
-//
-// quantity = total stock of all sizes
-//
-// Example:
-// S  = 5
-// M  = 10
-// L  = 8
-// XL = 2
-//
-// quantity = 25
-// ============================================================
 
 const calculateVariantQuantity = (sizes) => {
   if (!Array.isArray(sizes)) {
@@ -157,10 +145,6 @@ const prepareVariants = async (
   const preparedVariants = [];
 
   for (const variant of variants) {
-    // ----------------------------------------------------------
-    // COLOR
-    // ----------------------------------------------------------
-
     const color = String(
       variant.color || ""
     )
@@ -173,10 +157,6 @@ const prepareVariants = async (
       );
     }
 
-    // ----------------------------------------------------------
-    // MEDIA
-    // ----------------------------------------------------------
-
     const media = Array.isArray(
       variant.media
     )
@@ -188,10 +168,6 @@ const prepareVariants = async (
         `Maximum 10 media files are allowed for ${color}`
       );
     }
-
-    // ----------------------------------------------------------
-    // SIZES
-    // ----------------------------------------------------------
 
     const preparedSizes = [];
 
@@ -224,10 +200,6 @@ const prepareVariants = async (
           );
         }
 
-        // ------------------------------------------------------
-        // STOCK QUANTITY
-        // ------------------------------------------------------
-
         const stockQuantity =
           Number(
             sizeData.stockQuantity
@@ -239,10 +211,6 @@ const prepareVariants = async (
           );
         }
 
-        // ------------------------------------------------------
-        // SKU
-        // ------------------------------------------------------
-
         const sku =
           sizeData.sku ||
           (await generateSKU(
@@ -251,27 +219,15 @@ const prepareVariants = async (
             size
           ));
 
-        // ------------------------------------------------------
-        // BARCODE
-        // ------------------------------------------------------
-
         const barcode =
           sizeData.barcode ||
           (await generateBarcode());
 
-        // ------------------------------------------------------
-        // PUSH SIZE
-        // ------------------------------------------------------
-
         preparedSizes.push({
           size,
-
           stockQuantity,
-
           sku,
-
           barcode,
-
           isActive:
             sizeData.isActive !==
             undefined
@@ -283,18 +239,10 @@ const prepareVariants = async (
       }
     }
 
-    // ----------------------------------------------------------
-    // CALCULATE TOTAL QUANTITY
-    // ----------------------------------------------------------
-
     const quantity =
       calculateVariantQuantity(
         preparedSizes
       );
-
-    // ----------------------------------------------------------
-    // DISCOUNT PRICE
-    // ----------------------------------------------------------
 
     let discountPrice = null;
 
@@ -318,10 +266,6 @@ const prepareVariants = async (
       }
     }
 
-    // ----------------------------------------------------------
-    // PRICE
-    // ----------------------------------------------------------
-
     const price =
       Number(variant.price);
 
@@ -333,10 +277,6 @@ const prepareVariants = async (
         `Invalid price for ${color}`
       );
     }
-
-    // ----------------------------------------------------------
-    // OFFER
-    // ----------------------------------------------------------
 
     const offerType =
       variant.offer?.type || "none";
@@ -366,55 +306,34 @@ const prepareVariants = async (
       );
     }
 
-    // ----------------------------------------------------------
-    // PREPARED VARIANT
-    // ----------------------------------------------------------
-
     preparedVariants.push({
       color,
-
       media,
-
       fabric:
         variant.fabric || "",
-
       feel:
         variant.feel || "",
-
       lining:
         variant.lining || "",
-
       sleeves:
         variant.sleeves || "",
-
       finishing:
         variant.finishing || "",
-
       pocket:
         variant.pocket || "",
-
-      // Automatically calculated
       quantity,
-
       price,
-
       discountPrice,
-
       offer: {
         type: offerType,
-
         value: offerValue,
-
         startDate:
           offerStartDate,
-
         endDate:
           offerEndDate,
       },
-
       sizes:
         preparedSizes,
-
       isActive:
         variant.isActive !==
         undefined
@@ -450,10 +369,8 @@ const prepareUploadedMedia = (
       type: isVideo
         ? "video"
         : "image",
-
       imageURL:
         `/uploads/products/${file.filename}`,
-
       thumbnail: null,
     };
   });
@@ -478,10 +395,6 @@ exports.createProduct = async (
       variants,
     } = req.body;
 
-    // ----------------------------------------------------------
-    // VALIDATE SUB CATEGORY
-    // ----------------------------------------------------------
-
     if (!subCategoryId) {
       if (req.files) {
         req.files.forEach(
@@ -496,10 +409,6 @@ exports.createProduct = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // VALIDATE BRAND
-    // ----------------------------------------------------------
-
     if (!brandId) {
       if (req.files) {
         req.files.forEach(
@@ -513,10 +422,6 @@ exports.createProduct = async (
           "brandId is required",
       });
     }
-
-    // ----------------------------------------------------------
-    // VALIDATE NAME
-    // ----------------------------------------------------------
 
     if (
       !name ||
@@ -535,10 +440,6 @@ exports.createProduct = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // PARSE DESCRIPTION
-    // ----------------------------------------------------------
-
     let parsedDescription =
       description || {};
 
@@ -556,10 +457,6 @@ exports.createProduct = async (
         };
       }
     }
-
-    // ----------------------------------------------------------
-    // PARSE VARIANTS
-    // ----------------------------------------------------------
 
     let parsedVariants = variants;
 
@@ -605,19 +502,11 @@ exports.createProduct = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // PREPARE VARIANTS
-    // ----------------------------------------------------------
-
     const preparedVariants =
       await prepareVariants(
         parsedVariants || [],
         String(name).trim()
       );
-
-    // ----------------------------------------------------------
-    // CHECK VARIANTS
-    // ----------------------------------------------------------
 
     if (
       preparedVariants.length ===
@@ -635,10 +524,6 @@ exports.createProduct = async (
           "At least one product color variant is required",
       });
     }
-
-    // ----------------------------------------------------------
-    // CHECK DUPLICATE COLORS
-    // ----------------------------------------------------------
 
     const colors =
       preparedVariants.map(
@@ -666,18 +551,10 @@ exports.createProduct = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // PREPARE UPLOADED MEDIA
-    // ----------------------------------------------------------
-
     const uploadedMedia =
       prepareUploadedMedia(
         req.files
       );
-
-    // ----------------------------------------------------------
-    // ASSIGN MEDIA TO FIRST VARIANT
-    // ----------------------------------------------------------
 
     if (
       uploadedMedia.length > 0
@@ -705,51 +582,33 @@ exports.createProduct = async (
         uploadedMedia;
     }
 
-    // ----------------------------------------------------------
-    // CREATE PRODUCT
-    // ----------------------------------------------------------
-
     const product =
       await Product.create({
         categoryId:
           categoryId || null,
-
         subCategoryId,
-
         brandId:
           brandId || null,
-
         name:
           String(name).trim(),
-
         description: {
           about:
             parsedDescription?.about ||
             "",
-
           itemDetails:
             parsedDescription?.itemDetails ||
             "",
         },
-
         variants:
           preparedVariants,
-
         isActive: true,
-
         isDeleted: false,
       });
 
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
-
     return res.status(201).json({
       success: true,
-
       message:
         "Product created successfully",
-
       data: product,
     });
   } catch (error) {
@@ -766,10 +625,8 @@ exports.createProduct = async (
 
     return res.status(500).json({
       success: false,
-
       message:
         "Failed to create product",
-
       error: error.message,
     });
   }
@@ -793,6 +650,17 @@ exports.getAllProducts = async (
       subCategoryId,
       brandId,
       isActive,
+      size,
+      variant,
+      fabric,
+      color,
+      max_price,
+      max_price_range,
+      price_range_option,
+      features,
+      sleeve,
+      availability,
+      rating,
     } = req.query;
 
     const pageNumber =
@@ -888,6 +756,83 @@ exports.getAllProducts = async (
         isActive === "true";
     }
 
+    // --- SIZE / VARIANT FILTER LOGIC ---
+    const targetSize = size || variant;
+    if (targetSize) {
+      const sizesArray = Array.isArray(targetSize) ? targetSize : [targetSize];
+      filter["variants.sizes.size"] = { $in: sizesArray };
+    }
+
+    // --- FABRIC FILTER LOGIC ---
+    if (fabric) {
+      const fabricsArray = Array.isArray(fabric) ? fabric : [fabric];
+      filter["variants.fabric"] = { $in: fabricsArray };
+    }
+
+    // --- COLOR / PRINT FILTER LOGIC ---
+    if (color) {
+      const colorsArray = Array.isArray(color) ? color : [color];
+      filter["variants.color"] = { $in: colorsArray };
+    }
+
+    // --- FEATURES FILTER LOGIC ---
+    if (features) {
+      const featuresArray = Array.isArray(features) ? features : [features];
+      filter["variants.pocket"] = { $in: featuresArray };
+    }
+
+    // --- SLEEVE STYLE FILTER LOGIC ---
+    if (sleeve) {
+      const sleeveArray = Array.isArray(sleeve) ? sleeve : [sleeve];
+      filter["variants.sleeves"] = { $in: sleeveArray };
+    }
+
+    // --- AVAILABILITY FILTER LOGIC ---
+    if (availability) {
+      if (availability === "in-stock") {
+        filter["variants.quantity"] = { $gt: 0 };
+      }
+    }
+
+    // --- RATING FILTER LOGIC ---
+    if (rating && rating !== "any") {
+      const minRating = Number(rating);
+      if (!isNaN(minRating)) {
+        filter.rating = { $gte: minRating };
+      }
+    }
+
+    // --- PRICE FILTER LOGIC (Checkboxes take absolute priority) ---
+   // --- PRICE FILTER LOGIC ---
+    const targetPriceOption = price_range_option || (["under_1000", "1000_1500", "1500_2000", "above_2000"].includes(max_price) ? max_price : null);
+
+    if (targetPriceOption) {
+      let priceCondition = {};
+      if (targetPriceOption === "under_1000") {
+        priceCondition = { $lt: 1000 };
+      } else if (targetPriceOption === "1000_1500") {
+        priceCondition = { $gte: 1000, $lte: 1500 };
+      } else if (targetPriceOption === "1500_2000") {
+        priceCondition = { $gte: 1500, $lte: 2000 };
+      } else if (targetPriceOption === "above_2000") {
+        priceCondition = { $gt: 2000 };
+      }
+
+      // Check both variants.price and variants.discountPrice so discounted items are matched properly
+      filter.$or = [
+        { "variants.price": priceCondition },
+        { "variants.discountPrice": priceCondition }
+      ];
+    } else {
+      const activeMaxPrice = max_price || max_price_range;
+      if (activeMaxPrice) {
+        const maxPriceVal = Number(activeMaxPrice);
+        if (!isNaN(maxPriceVal)) {
+          filter["variants.price"] = { $lte: maxPriceVal };
+        }
+      }
+    }
+
     // ----------------------------------------------------------
     // QUERY
     // ----------------------------------------------------------
@@ -968,10 +913,6 @@ exports.getProductById = async (
       productId,
     } = req.params;
 
-    // ----------------------------------------------------------
-    // VALIDATE ID
-    // ----------------------------------------------------------
-
     if (
       !mongoose.Types.ObjectId.isValid(
         productId
@@ -983,10 +924,6 @@ exports.getProductById = async (
           "Invalid product ID",
       });
     }
-
-    // ----------------------------------------------------------
-    // FIND PRODUCT
-    // ----------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -1004,10 +941,6 @@ exports.getProductById = async (
           "Product not found",
       });
     }
-
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
 
     return res.status(200).json({
       success: true,
@@ -1048,10 +981,6 @@ exports.updateProduct = async (
       productId,
     } = req.params;
 
-    // ----------------------------------------------------------
-    // VALIDATE PRODUCT ID
-    // ----------------------------------------------------------
-
     if (
       !mongoose.Types.ObjectId.isValid(
         productId
@@ -1069,10 +998,6 @@ exports.updateProduct = async (
           "Invalid product ID",
       });
     }
-
-    // ----------------------------------------------------------
-    // FIND PRODUCT
-    // ----------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -1103,10 +1028,6 @@ exports.updateProduct = async (
       variants,
       isActive,
     } = req.body;
-
-    // ----------------------------------------------------------
-    // BASIC FIELDS
-    // ----------------------------------------------------------
 
     if (
       categoryId !==
@@ -1180,10 +1101,6 @@ exports.updateProduct = async (
         isActive === "true";
     }
 
-    // ----------------------------------------------------------
-    // DESCRIPTION
-    // ----------------------------------------------------------
-
     if (
       description !==
       undefined
@@ -1218,10 +1135,6 @@ exports.updateProduct = async (
           "",
       };
     }
-
-    // ----------------------------------------------------------
-    // VARIANTS
-    // ----------------------------------------------------------
 
     if (
       variants !==
@@ -1272,19 +1185,11 @@ exports.updateProduct = async (
         });
       }
 
-      // --------------------------------------------------------
-      // PREPARE VARIANTS
-      // --------------------------------------------------------
-
       const preparedVariants =
         await prepareVariants(
           parsedVariants,
           product.name
         );
-
-      // --------------------------------------------------------
-      // CHECK DUPLICATE COLORS
-      // --------------------------------------------------------
 
       const colors =
         preparedVariants.map(
@@ -1311,10 +1216,6 @@ exports.updateProduct = async (
             "Duplicate colors are not allowed",
         });
       }
-
-      // --------------------------------------------------------
-      // UPLOADED MEDIA
-      // --------------------------------------------------------
 
       const uploadedMedia =
         prepareUploadedMedia(
@@ -1365,19 +1266,9 @@ exports.updateProduct = async (
           ];
       }
 
-      // --------------------------------------------------------
-      // REPLACE VARIANTS
-      // --------------------------------------------------------
-
       product.variants =
         preparedVariants;
-    }
-
-    // ----------------------------------------------------------
-    // MEDIA ONLY UPDATE
-    // ----------------------------------------------------------
-
-    else if (
+    } else if (
       req.files &&
       req.files.length > 0
     ) {
@@ -1425,15 +1316,7 @@ exports.updateProduct = async (
       );
     }
 
-    // ----------------------------------------------------------
-    // SAVE
-    // ----------------------------------------------------------
-
     await product.save();
-
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
 
     return res.status(200).json({
       success: true,
@@ -1480,10 +1363,6 @@ exports.deleteProduct = async (
       productId,
     } = req.params;
 
-    // ----------------------------------------------------------
-    // VALIDATE ID
-    // ----------------------------------------------------------
-
     if (
       !mongoose.Types.ObjectId.isValid(
         productId
@@ -1495,10 +1374,6 @@ exports.deleteProduct = async (
           "Invalid product ID",
       });
     }
-
-    // ----------------------------------------------------------
-    // FIND PRODUCT
-    // ----------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -1514,19 +1389,11 @@ exports.deleteProduct = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // SOFT DELETE
-    // ----------------------------------------------------------
-
     product.isDeleted = true;
 
     product.isActive = false;
 
     await product.save();
-
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
 
     return res.status(200).json({
       success: true,
@@ -1566,10 +1433,6 @@ exports.addVariantMedia = async (
       variantId,
     } = req.params;
 
-    // ----------------------------------------------------------
-    // VALIDATE PRODUCT ID
-    // ----------------------------------------------------------
-
     if (
       !mongoose.Types.ObjectId.isValid(
         productId
@@ -1587,10 +1450,6 @@ exports.addVariantMedia = async (
           "Invalid product ID",
       });
     }
-
-    // ----------------------------------------------------------
-    // VALIDATE VARIANT ID
-    // ----------------------------------------------------------
 
     if (
       !mongoose.Types.ObjectId.isValid(
@@ -1610,10 +1469,6 @@ exports.addVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // CHECK FILES
-    // ----------------------------------------------------------
-
     if (
       !req.files ||
       req.files.length === 0
@@ -1624,10 +1479,6 @@ exports.addVariantMedia = async (
           "Please upload at least one image or video",
       });
     }
-
-    // ----------------------------------------------------------
-    // FIND PRODUCT
-    // ----------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -1647,10 +1498,6 @@ exports.addVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // FIND VARIANT
-    // ----------------------------------------------------------
-
     const variant =
       product.variants.id(
         variantId
@@ -1667,10 +1514,6 @@ exports.addVariantMedia = async (
           "Product color variant not found",
       });
     }
-
-    // ----------------------------------------------------------
-    // MAXIMUM 10 MEDIA
-    // ----------------------------------------------------------
 
     if (
       variant.media.length +
@@ -1690,28 +1533,16 @@ exports.addVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // PREPARE MEDIA
-    // ----------------------------------------------------------
-
     const newMedia =
       prepareUploadedMedia(
         req.files
       );
-
-    // ----------------------------------------------------------
-    // ADD MEDIA
-    // ----------------------------------------------------------
 
     variant.media.push(
       ...newMedia
     );
 
     await product.save();
-
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
 
     return res.status(200).json({
       success: true,
@@ -1772,10 +1603,6 @@ exports.deleteVariantMedia = async (
       mediaId,
     } = req.params;
 
-    // ----------------------------------------------------------
-    // VALIDATE PRODUCT ID
-    // ----------------------------------------------------------
-
     if (
       !mongoose.Types.ObjectId.isValid(
         productId
@@ -1788,10 +1615,6 @@ exports.deleteVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // VALIDATE VARIANT ID
-    // ----------------------------------------------------------
-
     if (
       !mongoose.Types.ObjectId.isValid(
         variantId
@@ -1799,14 +1622,9 @@ exports.deleteVariantMedia = async (
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Invalid variant ID",
+        message: "Invalid variant ID",
       });
     }
-
-    // ----------------------------------------------------------
-    // VALIDATE MEDIA ID
-    // ----------------------------------------------------------
 
     if (
       !mongoose.Types.ObjectId.isValid(
@@ -1819,10 +1637,6 @@ exports.deleteVariantMedia = async (
           "Invalid media ID",
       });
     }
-
-    // ----------------------------------------------------------
-    // FIND PRODUCT
-    // ----------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -1838,102 +1652,49 @@ exports.deleteVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // FIND VARIANT
-    // ----------------------------------------------------------
-
-    const variant =
-      product.variants.id(
-        variantId
-      );
-
-    if (!variant) {
+    const typeVariant = product.variants.id(variantId);
+    if (!typeVariant) {
       return res.status(404).json({
         success: false,
-        message:
-          "Variant not found",
+        message: "Variant not found",
       });
     }
 
-    // ----------------------------------------------------------
-    // FIND MEDIA
-    // ----------------------------------------------------------
-
-    const media =
-      variant.media.id(
-        mediaId
-      );
-
-    if (!media) {
+    const mediaItem = typeVariant.media.id(mediaId);
+    if (!mediaItem) {
       return res.status(404).json({
         success: false,
-        message:
-          "Media not found",
+        message: "Media not found",
       });
     }
 
-    // ----------------------------------------------------------
-    // DELETE PHYSICAL FILE
-    // ----------------------------------------------------------
+    if (mediaItem.imageURL) {
+      const relativePath = mediaItem.imageURL.replace(/^\/+/, "");
+      const absolutePath = path.join(process.cwd(), relativePath);
 
-    if (media.imageURL) {
-      const relativePath =
-        media.imageURL.replace(
-          /^\/+/,
-          ""
-        );
-
-      const absolutePath =
-        path.join(
-          process.cwd(),
-          relativePath
-        );
-
-      if (
-        fs.existsSync(
-          absolutePath
-        )
-      ) {
-        fs.unlinkSync(
-          absolutePath
-        );
+      if (fs.existsSync(absolutePath)) {
+        try {
+          fs.unlinkSync(absolutePath);
+        } catch (fileErr) {
+          console.error("Failed to delete physical media file:", fileErr.message);
+        }
       }
     }
 
-    // ----------------------------------------------------------
-    // DELETE MEDIA FROM MONGODB
-    // ----------------------------------------------------------
-
-    media.deleteOne();
-
+    mediaItem.deleteOne();
     await product.save();
-
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
 
     return res.status(200).json({
       success: true,
-
-      message:
-        "Product media deleted successfully",
-
+      message: "Product media deleted successfully",
       data: product,
     });
   } catch (error) {
-    console.error(
-      "Delete Variant Media Error:",
-      error
-    );
-
+    console.error("Delete Variant Media Error:", error);
     return res.status(500).json({
       success: false,
-
-      message:
-        "Failed to delete product media",
-
+      message: "Failed to delete product media",
       error: error.message,
     });
   }
 };
-
