@@ -264,12 +264,34 @@ const deleteBanner = async (req, res) => {
   }
 };
 
+const  getActiveBanners = async (req, res) => {
+  try {
+    const banners = await Banner.find({
+      isActive: true,
+    }).sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: banners,
+    });
+  } catch (error) {
+    console.error("GET ACTIVE BANNERS ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch active banners",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   createBanner,
   getAllBanners,
   getBannerById,
   updateBanner,
   deleteBanner,
+  getActiveBanners,
 };
 
 
