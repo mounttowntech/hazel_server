@@ -5,7 +5,6 @@ const userSchema = new mongoose.Schema(
     name: {
       type: String,
       trim: true,
-      default: null,
     },
 
     mobileNumber: {
@@ -13,7 +12,6 @@ const userSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
       trim: true,
-      default: null,
     },
 
     email: {
@@ -22,24 +20,25 @@ const userSchema = new mongoose.Schema(
       trim: true,
       unique: true,
       sparse: true,
-      default: null,
     },
 
     googleId: {
       type: String,
       unique: true,
       sparse: true,
-      default: null,
     },
 
     profileImage: {
       type: String,
-      default: null,
     },
 
     role: {
       type: String,
-      enum: ["customer", "admin", "superAdmin"],
+      enum: [
+        "customer",
+        "admin",
+        "superAdmin",
+      ],
       default: "customer",
     },
 
@@ -55,7 +54,6 @@ const userSchema = new mongoose.Schema(
 
     lastLoginAt: {
       type: Date,
-      default: null,
     },
   },
   {
@@ -63,4 +61,7 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model("User", userSchema);
+module.exports = mongoose.model(
+  "User",
+  userSchema
+);

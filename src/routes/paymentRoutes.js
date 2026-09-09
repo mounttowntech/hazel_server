@@ -12,80 +12,61 @@ const {
   deletePayment,
 } = require("../controllers/paymentController");
 
-const {verifyToken} = require("../middleware/authMiddleware");
+const {
+  verifyToken,
+} = require("../middleware/authMiddleware");
 
-// ============================================================
-// CREATE CASHFREE PAYMENT
-// POST /api/payments/create
-// ============================================================
+// ======================================================
+// CASHFREE PAYMENT
+// ======================================================
 
+// Create Cashfree payment
 router.post(
   "/create",
   verifyToken,
   createCashfreePayment
 );
 
-// ============================================================
-// VERIFY CASHFREE PAYMENT
-// GET /api/payments/verify/:orderId
-// ============================================================
-
+// Verify Cashfree payment
 router.get(
   "/verify/:orderId",
   verifyToken,
   verifyCashfreePayment
 );
 
-// ============================================================
-// CASHFREE WEBHOOK
-// POST /api/payments/webhook
-//
-// DO NOT USE AUTH MIDDLEWARE HERE
-// ============================================================
-
+// Cashfree webhook
+// IMPORTANT: DO NOT USE verifyToken HERE
 router.post(
   "/webhook",
   cashfreeWebhook
 );
 
-// ============================================================
-// GET PAYMENT BY ORDER
-// GET /api/payments/order/:orderId
-// ============================================================
+// ======================================================
+// PAYMENT MANAGEMENT
+// ======================================================
 
+// Get payment by order
 router.get(
   "/order/:orderId",
   verifyToken,
   getPaymentByOrder
 );
 
-// ============================================================
-// GET ALL PAYMENTS
-// GET /api/payments
-// ============================================================
-
+// Get all payments
 router.get(
   "/all",
   verifyToken,
   getAllPayments
 );
 
-// ============================================================
-// UPDATE PAYMENT STATUS
-// PUT /api/payments/:paymentId/status
-// ============================================================
-
+// Update payment status
 router.put(
   "/status/:paymentId",
   verifyToken,
   updatePaymentStatus
 );
 
-// ============================================================
-// DELETE PAYMENT
-// DELETE /api/payments/:paymentId
-// ============================================================
-
+// Soft delete payment
 router.delete(
   "/delete/:paymentId",
   verifyToken,

@@ -10,9 +10,7 @@ const bannerListSchema = new mongoose.Schema({
     enum: [
 
       "offer",
-
       "festival",
-
       "dailyUsage"
 
       //
@@ -32,19 +30,13 @@ const bannerListSchema = new mongoose.Schema({
   },
 
   createdAt: {
-
     type: Date,
-
     default: Date.now
-
   },
 
   updatedAt: {
-
     type: Date,
-
     default: Date.now
-
   }
 
 });
