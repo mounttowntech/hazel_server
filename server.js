@@ -5,10 +5,19 @@ const connectDB = require("./src/config/db");
 
 const PORT = process.env.PORT || 5004;
 
-// Connect MongoDB
+// ==========================================================
+// CONNECT DATABASE
+// ==========================================================
+
 connectDB();
 
-// Start Server
+// ==========================================================
+// START SERVER
+// ==========================================================
+
 app.listen(PORT, () => {
+  
   console.log(`Server running on port ${PORT}`);
+  // console.log(`API: http://localhost:${PORT}`);
+ 
 });
