@@ -1,4 +1,5 @@
 const axios = require("axios");
+const crypto = require("crypto");
 
 const Payment = require("../models/paymentModel");
 const Order = require("../models/orderModel");
@@ -6,81 +7,57 @@ const User = require("../models/userModel");
 
 const {
   CASHFREE_BASE_URL,
-  cashfreeHeaders,
+  CASHFREE_API_VERSION,
+  CASHFREE_APP_ID,
+  CASHFREE_SECRET_KEY,
+  CASHFREE_ENV,
 } = require("../config/cashfree");
 
-// ============================================================
-// GET USER ID
-// ============================================================
+// ======================================================
+// HELPERS
+// ======================================================
 
 const getUserId = (req) => {
-  return (
-    req.user?.id ||
-    req.user?._id ||
-    req.user?.userId
-  );
+  return req.user?.id || req.user?._id || req.user?.userId;
 };
 
-// ============================================================
+const getCashfreeHeaders = () => {
+  return {
+    "Content-Type": "application/json",
+    "x-api-version": CASHFREE_API_VERSION || "2025-01-01",
+    "x-client-id": CASHFREE_APP_ID,
+    "x-client-secret": CASHFREE_SECRET_KEY,
+  };
+};
+
+// ======================================================
 // CREATE CASHFREE PAYMENT
 // POST /api/payments/create
-// ============================================================
+// ======================================================
 
-const createCashfreePayment = async (req, res) => {
+exports.createCashfreePayment = async (req, res) => {
   try {
-    const {
-      orderId,
-      userId: bodyUserId,
-      paymentMethod,
-    } = req.body;
+    const { orderId, paymentMethod } = req.body;
 
-    
+    const userId = getUserId(req);
 
-    // ========================================================
-    // GET USER ID
-    // ========================================================
+    // ------------------------------------------
+    // VALIDATION
+    // ------------------------------------------
 
-    const jwtUserId = getUserId(req);
-
-    const userId =
-      jwtUserId || bodyUserId;
-
-    // ========================================================
-    // VALIDATE ORDER ID
-    // ========================================================
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized user",
+      });
+    }
 
     if (!orderId) {
       return res.status(400).json({
         success: false,
-        message: "orderId is required",
+        message: "Order ID is required",
       });
     }
-
-    // ========================================================
-    // VALIDATE USER ID
-    // ========================================================
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "userId is required",
-      });
-    }
-
-    // ========================================================
-    // VALIDATE PAYMENT METHOD
-    // ========================================================
-
-    if (!paymentMethod) {
-      return res.status(400).json({
-        success: false,
-        message: "paymentMethod is required",
-      });
-    }
-
-    // ========================================================
-    // VALIDATE PAYMENT METHOD
-    // ========================================================
 
     const allowedPaymentMethods = [
       "COD",
@@ -92,21 +69,20 @@ const createCashfreePayment = async (req, res) => {
       "OTHER",
     ];
 
-    if (
-      !allowedPaymentMethods.includes(
-        paymentMethod
-      )
-    ) {
+    const selectedPaymentMethod = paymentMethod || "UPI";
+
+    if (!allowedPaymentMethods.includes(selectedPaymentMethod)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid paymentMethod",
-        allowedPaymentMethods,
+        message: `Invalid payment method. Allowed values: ${allowedPaymentMethods.join(
+          ", "
+        )}`,
       });
     }
 
-    // ========================================================
-    // FIND USER
-    // ========================================================
+    // ------------------------------------------
+    // GET USER
+    // ------------------------------------------
 
     const user = await User.findById(userId);
 
@@ -117,455 +93,390 @@ const createCashfreePayment = async (req, res) => {
       });
     }
 
-    console.log(
-      "User found:",
-      user._id.toString()
-    );
-
-    // ========================================================
-    // FIND ORDER
-    // ========================================================
+    // ------------------------------------------
+    // GET ORDER
+    // ------------------------------------------
+    // IMPORTANT:
+    // Using userId because your Payment schema uses userId.
+    // If your Order schema uses "user", change userId to user.
+    // ------------------------------------------
 
     const order = await Order.findOne({
       _id: orderId,
-      user: userId,
-      isDeleted: {
-        $ne: true,
-      },
+      userId: userId,
+      isDeleted: { $ne: true },
     });
 
     if (!order) {
       return res.status(404).json({
         success: false,
-        message:
-          "Order not found or order does not belong to this user",
+        message: "Order not found",
       });
     }
 
-    console.log(
-      "Order found:",
-      order._id.toString()
-    );
+    // ------------------------------------------
+    // CHECK EXISTING SUCCESSFUL PAYMENT
+    // ------------------------------------------
 
-    // ========================================================
-    // GET ORDER AMOUNT
-    // ========================================================
+    const existingSuccessfulPayment = await Payment.findOne({
+      orderId: order._id,
+      userId,
+      gateway: "CASHFREE",
+      status: "SUCCESS",
+      isDeleted: false,
+    });
 
-    const amount =
-      order.grandTotal ??
-      order.totalAmount ??
-      order.finalAmount ??
-      order.amount;
-
-    if (
-      amount === undefined ||
-      amount === null ||
-      Number(amount) <= 0
-    ) {
+    if (existingSuccessfulPayment) {
       return res.status(400).json({
         success: false,
-        message: "Invalid amount in order",
+        message: "Payment already completed for this order",
+        data: {
+          paymentId: existingSuccessfulPayment.paymentId,
+          status: existingSuccessfulPayment.status,
+        },
       });
     }
 
-    console.log(
-      "Order amount:",
-      Number(amount)
+    // ------------------------------------------
+    // ORDER AMOUNT
+    // ------------------------------------------
+
+    const amount = Number(
+      order.grandTotal ??
+        order.totalAmount ??
+        order.finalAmount ??
+        order.amount ??
+        0
     );
 
-    // ========================================================
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order amount",
+      });
+    }
+
+    // ------------------------------------------
     // CUSTOMER DETAILS
-    // ========================================================
+    // ------------------------------------------
 
     const customerName =
       user.name ||
-      "Hazel Customer";
+      user.fullName ||
+      `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+      "Customer";
 
     const customerEmail =
       user.email ||
-      "customer@example.com";
+      user.emailAddress ||
+      `customer${user._id}@example.com`;
 
-    const customerPhone =
-      user.mobileNumber;
+    const customerPhone = String(
+      user.phone ||
+        user.mobile ||
+        user.phoneNumber ||
+        "9999999999"
+    );
 
-    if (!customerPhone) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "User mobile number is required",
-      });
-    }
-
-    // ========================================================
-    // GENERATE CASHFREE ORDER ID
-    // ========================================================
+    // ------------------------------------------
+    // CASHFREE ORDER ID
+    // ------------------------------------------
 
     const gatewayOrderId =
-      `HZ_${Date.now()}_${Math.floor(
-        Math.random() * 100000
-      )}`;
+      `HZ_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
 
-    // ========================================================
+    // ------------------------------------------
     // RETURN URL
-    // ========================================================
+    // ------------------------------------------
+
+    const frontendUrl =
+      process.env.FRONTEND_URL || "http://localhost:5173";
 
     const returnUrl =
-      process.env.CASHFREE_RETURN_URL ||
-      "http://localhost:5173/payment/success?order_id={order_id}";
+      `${frontendUrl}/payment/success?order_id={order_id}`;
 
-    // ========================================================
+    // ------------------------------------------
     // CASHFREE REQUEST
-    // ========================================================
+    // ------------------------------------------
 
     const cashfreeRequest = {
       order_id: gatewayOrderId,
 
-      order_amount: Number(amount),
+      order_amount: Number(amount.toFixed(2)),
 
       order_currency: "INR",
 
       customer_details: {
         customer_id: String(user._id),
-
         customer_name: customerName,
-
         customer_email: customerEmail,
-
-        customer_phone:
-          String(customerPhone),
+        customer_phone: customerPhone,
       },
 
       order_meta: {
         return_url: returnUrl,
       },
 
-      order_note:
-        `Hazel payment for order ${orderId}`,
+      order_note: `Payment for order ${order._id}`,
     };
 
-    console.log(
-      "Cashfree request:",
-      JSON.stringify(
-        cashfreeRequest,
-        null,
-        2
-      )
+    // ------------------------------------------
+    // CREATE CASHFREE ORDER
+    // ------------------------------------------
+
+    const cashfreeResponse = await axios.post(
+      `${CASHFREE_BASE_URL}/orders`,
+      cashfreeRequest,
+      {
+        headers: getCashfreeHeaders(),
+      }
     );
 
-    // ========================================================
-    // CALL CASHFREE
-    // ========================================================
+    const cashfreeData = cashfreeResponse.data;
 
-    const cashfreeResponse =
-      await axios.post(
-        `${CASHFREE_BASE_URL}/orders`,
-        cashfreeRequest,
-        {
-          headers: cashfreeHeaders,
-        }
-      );
-
-    const cashfreeData =
-      cashfreeResponse.data;
-
-    console.log(
-      "Cashfree response:",
-      JSON.stringify(
-        cashfreeData,
-        null,
-        2
-      )
-    );
-
-    // ========================================================
-    // CHECK PAYMENT SESSION
-    // ========================================================
-
-    if (
-      !cashfreeData ||
-      !cashfreeData.payment_session_id
-    ) {
+    if (!cashfreeData?.payment_session_id) {
       return res.status(500).json({
         success: false,
-        message:
-          "Cashfree payment session ID not received",
+        message: "Cashfree payment session was not created",
         data: cashfreeData,
       });
     }
 
-    // ========================================================
-    // CREATE PAYMENT
-    // ========================================================
+    // ------------------------------------------
+    // CREATE PAYMENT RECORD
+    // ------------------------------------------
 
-    const payment =
-      await Payment.create({
+    const paymentId =
+      `PAY_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+
+    const payment = await Payment.create({
+      orderId: order._id,
+      userId,
+
+      paymentId,
+
+      transactionId: "",
+
+      gatewayOrderId,
+
+      gatewayPaymentId: "",
+
+      paymentSessionId:
+        cashfreeData.payment_session_id,
+
+      gateway: "CASHFREE",
+
+      amount,
+
+      currency: "INR",
+
+      paymentMethod: selectedPaymentMethod,
+
+      status: "PENDING",
+
+      gatewayResponse: cashfreeData,
+    });
+
+    // ------------------------------------------
+    // UPDATE ORDER
+    // ------------------------------------------
+
+    if (order.paymentStatus !== undefined) {
+      // If your Order enum uses uppercase:
+      // order.paymentStatus = "PENDING";
+
+      // If your Order enum uses lowercase:
+      // order.paymentStatus = "pending";
+
+      order.paymentStatus = "PENDING";
+
+      await order.save();
+    }
+
+    // ------------------------------------------
+    // RESPONSE
+    // ------------------------------------------
+
+    return res.status(201).json({
+      success: true,
+      message: "Cashfree payment created successfully",
+
+      data: {
+        paymentId: payment.paymentId,
+
+        mongoPaymentId: payment._id,
+
         orderId: order._id,
 
-        userId: user._id,
+        userId,
 
-        paymentId:
-          `PAY_${Date.now()}_${Math.floor(
-            Math.random() * 100000
-          )}`,
-
-        amount: Number(amount),
+        amount,
 
         currency: "INR",
 
-        paymentMethod,
+        paymentMethod: selectedPaymentMethod,
 
         gateway: "CASHFREE",
 
-        status: "PENDING",
+        status: payment.status,
 
-        gatewayOrderId:
-          cashfreeData.order_id ||
-          gatewayOrderId,
+        gatewayOrderId,
 
         paymentSessionId:
           cashfreeData.payment_session_id,
 
-        gatewayResponse:
-          cashfreeData,
-      });
-
-    // ========================================================
-    // RESPONSE
-    // ========================================================
-
-    return res.status(201).json({
-      success: true,
-
-      message:
-        "Cashfree payment created successfully",
-
-      data: {
-        paymentId:
-          payment.paymentId,
-
-        mongoPaymentId:
-          payment._id,
-
-        orderId:
-          payment.orderId,
-
-        userId:
-          payment.userId,
-
-        amount:
-          payment.amount,
-
-        currency:
-          payment.currency,
-
-        paymentMethod:
-          payment.paymentMethod,
-
-        gateway:
-          payment.gateway,
-
-        status:
-          payment.status,
-
-        gatewayOrderId:
-          payment.gatewayOrderId,
-
-        paymentSessionId:
-          payment.paymentSessionId,
+        cashfreeOrderStatus:
+          cashfreeData.order_status || "ACTIVE",
       },
     });
   } catch (error) {
     console.error(
-      "================================="
-    );
-
-    console.error(
-      "CREATE CASHFREE PAYMENT ERROR"
-    );
-
-    console.error(
-      error.response?.data ||
-      error.message ||
-      error
-    );
-
-    console.error(
-      "================================="
+      "CREATE CASHFREE PAYMENT ERROR:",
+      error.response?.data || error.message
     );
 
     return res.status(
       error.response?.status || 500
     ).json({
       success: false,
-
-      message:
-        "Failed to create Cashfree payment",
-
+      message: "Failed to create Cashfree payment",
       error:
         error.response?.data ||
-        error.message ||
-        "Internal server error",
+        error.message,
     });
   }
 };
 
-// ============================================================
+// ======================================================
 // VERIFY CASHFREE PAYMENT
 // GET /api/payments/verify/:orderId
-// ============================================================
+// ======================================================
 
-const verifyCashfreePayment = async (
-  req,
-  res
-) => {
+exports.verifyCashfreePayment = async (req, res) => {
   try {
-    const { orderId } =
-      req.params;
+    const { orderId } = req.params;
 
-    if (!orderId) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "orderId is required",
-      });
-    }
-
-    const userId =
-      getUserId(req);
+    const userId = getUserId(req);
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message:
-          "Authentication required",
+        message: "Unauthorized user",
       });
     }
 
-    // ========================================================
-    // FIND PAYMENT
-    // ========================================================
-
-    const payment =
-      await Payment.findOne({
-        orderId,
-        userId,
-        gateway: "CASHFREE",
-        isDeleted: false,
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
       });
+    }
+
+    // ------------------------------------------
+    // FIND PAYMENT
+    // ------------------------------------------
+
+    const payment = await Payment.findOne({
+      orderId,
+      userId,
+      gateway: "CASHFREE",
+      isDeleted: false,
+    }).sort({ createdAt: -1 });
 
     if (!payment) {
       return res.status(404).json({
         success: false,
-        message:
-          "Payment not found",
+        message: "Payment record not found",
       });
     }
 
-    // ========================================================
-    // CASHFREE GET PAYMENTS
-    // ========================================================
+    if (!payment.gatewayOrderId) {
+      return res.status(400).json({
+        success: false,
+        message: "Cashfree gateway order ID not found",
+      });
+    }
 
-    const response =
-      await axios.get(
-        `${CASHFREE_BASE_URL}/orders/${payment.gatewayOrderId}/payments`,
-        {
-          headers:
-            cashfreeHeaders,
-        }
-      );
+    // ------------------------------------------
+    // GET PAYMENT DETAILS FROM CASHFREE
+    // ------------------------------------------
 
-    const payments =
-      response.data;
-
-    console.log(
-      "Cashfree Payments:",
-      JSON.stringify(
-        payments,
-        null,
-        2
-      )
+    const cashfreeResponse = await axios.get(
+      `${CASHFREE_BASE_URL}/orders/${payment.gatewayOrderId}/payments`,
+      {
+        headers: getCashfreeHeaders(),
+      }
     );
 
-    if (
-      !payments ||
-      !Array.isArray(payments) ||
-      payments.length === 0
-    ) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "No payment transaction found",
-      });
-    }
+    const cashfreePayments =
+      cashfreeResponse.data;
 
-    // ========================================================
-    // SUCCESS PAYMENT
-    // ========================================================
+    const payments = Array.isArray(
+      cashfreePayments
+    )
+      ? cashfreePayments
+      : [];
 
-    const successfulPayment =
-      payments.find(
-        (item) =>
-          item.payment_status ===
-          "SUCCESS"
-      );
+    // ------------------------------------------
+    // FIND SUCCESS PAYMENT
+    // ------------------------------------------
 
-    if (successfulPayment) {
-      payment.status =
-        "SUCCESS";
+    const successPayment = payments.find(
+      (item) =>
+        item.payment_status === "SUCCESS"
+    );
+
+    if (successPayment) {
+      payment.status = "SUCCESS";
 
       payment.gatewayPaymentId =
-        successfulPayment.cf_payment_id ||
-        "";
+        successPayment.cf_payment_id
+          ? String(successPayment.cf_payment_id)
+          : "";
 
       payment.transactionId =
-        successfulPayment.cf_payment_id ||
-        "";
+        successPayment.cf_payment_id
+          ? String(successPayment.cf_payment_id)
+          : "";
 
       payment.paidAt =
-        payment.paidAt ||
-        new Date();
+        successPayment.payment_completion_time
+          ? new Date(
+              successPayment.payment_completion_time
+            )
+          : new Date();
 
       payment.gatewayResponse =
-        payments;
+        cashfreePayments;
+
+      payment.failureReason = "";
 
       await payment.save();
 
-      // ======================================================
+      // ----------------------------------------
       // UPDATE ORDER
-      // ======================================================
+      // ----------------------------------------
 
-      const order =
-        await Order.findById(
-          payment.orderId
-        );
+      const order = await Order.findById(
+        payment.orderId
+      );
 
       if (order) {
-        if (
-          order.paymentStatus !==
-          undefined
-        ) {
-          order.paymentStatus =
-            "PAID";
-
-          await order.save();
+        if (order.paymentStatus !== undefined) {
+          order.paymentStatus = "PAID";
         }
+
+        await order.save();
       }
 
       return res.status(200).json({
         success: true,
-
-        message:
-          "Payment verified successfully",
+        message: "Payment verified successfully",
 
         data: {
-          paymentId:
-            payment.paymentId,
+          paymentId: payment.paymentId,
 
-          orderId:
-            payment.orderId,
-
-          userId:
-            payment.userId,
+          orderId: payment.orderId,
 
           gatewayOrderId:
             payment.gatewayOrderId,
@@ -576,68 +487,67 @@ const verifyCashfreePayment = async (
           transactionId:
             payment.transactionId,
 
-          amount:
-            payment.amount,
+          amount: payment.amount,
 
-          status:
-            payment.status,
+          currency: payment.currency,
 
-          paidAt:
-            payment.paidAt,
+          status: payment.status,
+
+          paidAt: payment.paidAt,
+
+          paymentMethod:
+            payment.paymentMethod,
         },
       });
     }
 
-    // ========================================================
+    // ------------------------------------------
     // LATEST PAYMENT
-    // ========================================================
+    // ------------------------------------------
 
     const latestPayment =
-      payments[
-        payments.length - 1
-      ];
+      payments.length > 0
+        ? payments[payments.length - 1]
+        : null;
 
-    // ========================================================
-    // FAILED
-    // ========================================================
+    if (latestPayment) {
+      const cashfreeStatus =
+        latestPayment.payment_status;
 
-    if (
-      latestPayment?.payment_status ===
-      "FAILED"
-    ) {
-      payment.status =
-        "FAILED";
+      if (cashfreeStatus === "FAILED") {
+        payment.status = "FAILED";
 
-      payment.failureReason =
-        latestPayment.payment_message ||
-        "Payment failed";
+        payment.failureReason =
+          latestPayment.payment_message ||
+          latestPayment.payment_error?.error_description ||
+          "Payment failed";
+      } else if (
+        cashfreeStatus === "USER_DROPPED"
+      ) {
+        payment.status = "CANCELLED";
+
+        payment.failureReason =
+          latestPayment.payment_message ||
+          "Payment cancelled by user";
+      } else {
+        payment.status = "PROCESSING";
+      }
+
+      payment.gatewayPaymentId =
+        latestPayment.cf_payment_id
+          ? String(latestPayment.cf_payment_id)
+          : "";
+
+      payment.transactionId =
+        latestPayment.cf_payment_id
+          ? String(latestPayment.cf_payment_id)
+          : "";
+
+      payment.gatewayResponse =
+        cashfreePayments;
+
+      await payment.save();
     }
-
-    // ========================================================
-    // USER DROPPED
-    // ========================================================
-
-    else if (
-      latestPayment?.payment_status ===
-      "USER_DROPPED"
-    ) {
-      payment.status =
-        "CANCELLED";
-    }
-
-    // ========================================================
-    // PROCESSING
-    // ========================================================
-
-    else {
-      payment.status =
-        "PROCESSING";
-    }
-
-    payment.gatewayResponse =
-      payments;
-
-    await payment.save();
 
     return res.status(200).json({
       success: true,
@@ -646,17 +556,17 @@ const verifyCashfreePayment = async (
         "Payment verification completed",
 
       data: {
-        paymentId:
-          payment.paymentId,
+        paymentId: payment.paymentId,
 
-        orderId:
-          payment.orderId,
+        orderId: payment.orderId,
 
-        userId:
-          payment.userId,
+        status: payment.status,
 
-        status:
-          payment.status,
+        gatewayOrderId:
+          payment.gatewayOrderId,
+
+        paymentSessionId:
+          payment.paymentSessionId,
 
         failureReason:
           payment.failureReason,
@@ -665,65 +575,152 @@ const verifyCashfreePayment = async (
   } catch (error) {
     console.error(
       "VERIFY CASHFREE PAYMENT ERROR:",
-      error.response?.data ||
-      error.message
+      error.response?.data || error.message
     );
 
     return res.status(
       error.response?.status || 500
     ).json({
       success: false,
-
-      message:
-        "Failed to verify Cashfree payment",
-
+      message: "Failed to verify Cashfree payment",
       error:
         error.response?.data ||
-        error.message ||
-        "Internal server error",
+        error.message,
     });
   }
 };
 
-// ============================================================
+// ======================================================
+// VERIFY CASHFREE WEBHOOK SIGNATURE
+// ======================================================
+
+const verifyCashfreeWebhookSignature = (
+  req
+) => {
+  try {
+    const signature =
+      req.headers["x-webhook-signature"];
+
+    const timestamp =
+      req.headers["x-webhook-timestamp"];
+
+    if (!signature || !timestamp) {
+      console.error(
+        "Cashfree webhook signature/timestamp missing"
+      );
+
+      return false;
+    }
+
+    if (!req.body) {
+      return false;
+    }
+
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body.toString("utf8")
+      : req.body;
+
+    const signedPayload =
+      timestamp + rawBody;
+
+    const expectedSignature =
+      crypto
+        .createHmac(
+          "sha256",
+          process.env.CASHFREE_WEBHOOK_SECRET
+        )
+        .update(signedPayload)
+        .digest("base64");
+
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  } catch (error) {
+    console.error(
+      "Webhook signature verification error:",
+      error.message
+    );
+
+    return false;
+  }
+};
+
+// ======================================================
 // CASHFREE WEBHOOK
 // POST /api/payments/webhook
-// ============================================================
+// ======================================================
 
-const cashfreeWebhook = async (
+exports.cashfreeWebhook = async (
   req,
   res
 ) => {
   try {
-    const data = req.body;
+    // ------------------------------------------
+    // VERIFY SIGNATURE
+    // ------------------------------------------
 
-   
+    const isValid =
+      verifyCashfreeWebhookSignature(req);
+
+    if (!isValid) {
+      console.error(
+        "Invalid Cashfree webhook signature"
+      );
+
+      return res.status(401).json({
+        success: false,
+        message: "Invalid webhook signature",
+      });
+    }
+
+    // ------------------------------------------
+    // PARSE RAW BODY
+    // ------------------------------------------
+
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body.toString("utf8")
+      : req.body;
+
+    const data =
+      typeof rawBody === "string"
+        ? JSON.parse(rawBody)
+        : rawBody;
+
+    // ------------------------------------------
+    // CASHFREE WEBHOOK DATA
+    // ------------------------------------------
+
     const gatewayOrderId =
       data?.data?.order?.order_id;
 
     const gatewayPaymentId =
-      data?.data?.payment
-        ?.cf_payment_id;
+      data?.data?.payment?.cf_payment_id;
 
     const paymentStatus =
-      data?.data?.payment
-        ?.payment_status;
+      data?.data?.payment?.payment_status;
 
-    // ========================================================
-    // VALIDATE ORDER ID
-    // ========================================================
+    const paymentMessage =
+      data?.data?.payment?.payment_message ||
+      data?.data?.payment?.payment_error
+        ?.error_description ||
+      "";
+
+    // ------------------------------------------
+    // VALIDATION
+    // ------------------------------------------
 
     if (!gatewayOrderId) {
       return res.status(400).json({
         success: false,
         message:
-          "Cashfree order ID missing",
+          "Cashfree gateway order ID missing",
       });
     }
 
-    // ========================================================
+    // ------------------------------------------
     // FIND PAYMENT
-    // ========================================================
+    // ------------------------------------------
 
     const payment =
       await Payment.findOne({
@@ -733,152 +730,166 @@ const cashfreeWebhook = async (
       });
 
     if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Payment not found",
+      console.error(
+        "Payment not found for Cashfree order:",
+        gatewayOrderId
+      );
+
+      // Return 200 so webhook does not keep retrying
+      return res.status(200).json({
+        success: true,
+        message: "Payment record not found",
       });
     }
 
-    // ========================================================
-    // PAYMENT ID
-    // ========================================================
+    // ------------------------------------------
+    // UPDATE PAYMENT
+    // ------------------------------------------
 
     if (gatewayPaymentId) {
       payment.gatewayPaymentId =
-        gatewayPaymentId;
+        String(gatewayPaymentId);
 
       payment.transactionId =
-        gatewayPaymentId;
+        String(gatewayPaymentId);
     }
 
-    // ========================================================
-    // GATEWAY RESPONSE
-    // ========================================================
+    payment.gatewayResponse = data;
 
-    payment.gatewayResponse =
-      data;
+    // ------------------------------------------
+    // SUCCESS
+    // ------------------------------------------
 
-    // ========================================================
-    // STATUS
-    // ========================================================
+    if (paymentStatus === "SUCCESS") {
+      payment.status = "SUCCESS";
 
-    switch (
-      paymentStatus
-    ) {
-      case "SUCCESS":
+      payment.paidAt = new Date();
 
-        payment.status =
-          "SUCCESS";
+      payment.failureReason = "";
 
-        payment.paidAt =
-          payment.paidAt ||
-          new Date();
+      await payment.save();
 
-        break;
+      // ----------------------------------------
+      // UPDATE ORDER
+      // ----------------------------------------
 
-      case "FAILED":
-
-        payment.status =
-          "FAILED";
-
-        payment.failureReason =
-          data?.data?.payment
-            ?.payment_message ||
-          "Payment failed";
-
-        break;
-
-      case "USER_DROPPED":
-
-        payment.status =
-          "CANCELLED";
-
-        break;
-
-      case "PENDING":
-
-        payment.status =
-          "PENDING";
-
-        break;
-
-      default:
-
-        payment.status =
-          "PROCESSING";
-    }
-
-    await payment.save();
-
-    // ========================================================
-    // UPDATE ORDER
-    // ========================================================
-
-    if (
-      payment.status ===
-      "SUCCESS"
-    ) {
-      const order =
-        await Order.findById(
-          payment.orderId
-        );
+      const order = await Order.findById(
+        payment.orderId
+      );
 
       if (order) {
-        if (
-          order.paymentStatus !==
-          undefined
-        ) {
-          order.paymentStatus =
-            "PAID";
-
-          await order.save();
+        if (order.paymentStatus !== undefined) {
+          order.paymentStatus = "PAID";
         }
+
+        await order.save();
       }
+
+      return res.status(200).json({
+        success: true,
+        message: "Payment success webhook processed",
+      });
     }
+
+    // ------------------------------------------
+    // FAILED
+    // ------------------------------------------
+
+    if (paymentStatus === "FAILED") {
+      payment.status = "FAILED";
+
+      payment.failureReason =
+        paymentMessage || "Payment failed";
+
+      await payment.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Payment failed webhook processed",
+      });
+    }
+
+    // ------------------------------------------
+    // USER DROPPED
+    // ------------------------------------------
+
+    if (paymentStatus === "USER_DROPPED") {
+      payment.status = "CANCELLED";
+
+      payment.failureReason =
+        paymentMessage ||
+        "Payment cancelled by user";
+
+      await payment.save();
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Payment cancellation webhook processed",
+      });
+    }
+
+    // ------------------------------------------
+    // PENDING
+    // ------------------------------------------
+
+    if (paymentStatus === "PENDING") {
+      payment.status = "PENDING";
+
+      await payment.save();
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Payment pending webhook processed",
+      });
+    }
+
+    // ------------------------------------------
+    // OTHER / PROCESSING
+    // ------------------------------------------
+
+    payment.status = "PROCESSING";
+
+    await payment.save();
 
     return res.status(200).json({
       success: true,
       message:
-        "Webhook processed successfully",
+        "Payment processing webhook handled",
     });
   } catch (error) {
     console.error(
       "CASHFREE WEBHOOK ERROR:",
-      error.message
+      error.response?.data ||
+        error.message
     );
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to process webhook",
-      error:
-        error.message,
+      message: "Webhook processing failed",
     });
   }
 };
 
-// ============================================================
+// ======================================================
 // GET PAYMENT BY ORDER
 // GET /api/payments/order/:orderId
-// ============================================================
+// ======================================================
 
-const getPaymentByOrder = async (
+exports.getPaymentByOrder = async (
   req,
   res
 ) => {
   try {
-    const { orderId } =
-      req.params;
+    const { orderId } = req.params;
 
-    const userId =
-      getUserId(req);
+    const userId = getUserId(req);
 
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message:
-          "Authentication required",
+        message: "Unauthorized user",
       });
     }
 
@@ -888,17 +899,20 @@ const getPaymentByOrder = async (
         userId,
         isDeleted: false,
       })
-        .populate("orderId")
+        .populate(
+          "orderId",
+          "orderNumber totalAmount paymentStatus orderStatus"
+        )
         .populate(
           "userId",
-          "name email mobileNumber"
-        );
+          "name email phone"
+        )
+        .sort({ createdAt: -1 });
 
     if (!payment) {
       return res.status(404).json({
         success: false,
-        message:
-          "Payment not found",
+        message: "Payment not found",
       });
     }
 
@@ -907,90 +921,102 @@ const getPaymentByOrder = async (
       data: payment,
     });
   } catch (error) {
+    console.error(
+      "GET PAYMENT BY ORDER ERROR:",
+      error.message
+    );
+
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to get payment",
-      error:
-        error.message,
+      message: "Failed to get payment",
+      error: error.message,
     });
   }
 };
 
-// ============================================================
+// ======================================================
 // GET ALL PAYMENTS
-// GET /api/payments
-// ============================================================
+// GET /api/payments/all
+// ======================================================
 
-const getAllPayments = async (
+exports.getAllPayments = async (
   req,
   res
 ) => {
   try {
     const {
-      status,
-      gateway,
-      paymentMethod,
       page = 1,
       limit = 20,
+      status,
+      gateway,
+      search,
     } = req.query;
+
+    const currentPage =
+      Math.max(Number(page), 1);
+
+    const perPage =
+      Math.min(
+        Math.max(Number(limit), 1),
+        100
+      );
+
+    const skip =
+      (currentPage - 1) * perPage;
 
     const filter = {
       isDeleted: false,
     };
 
     if (status) {
-      filter.status = status;
+      filter.status = status.toUpperCase();
     }
 
     if (gateway) {
-      filter.gateway = gateway;
+      filter.gateway =
+        gateway.toUpperCase();
     }
 
-    if (paymentMethod) {
-      filter.paymentMethod =
-        paymentMethod;
+    if (search) {
+      filter.$or = [
+        {
+          paymentId: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+        {
+          transactionId: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+        {
+          gatewayOrderId: {
+            $regex: search,
+            $options: "i",
+          },
+        },
+      ];
     }
 
-    const pageNumber =
-      Math.max(
-        Number(page) || 1,
-        1
-      );
+    const [payments, total] =
+      await Promise.all([
+        Payment.find(filter)
+          .populate(
+            "orderId",
+            "orderNumber totalAmount paymentStatus orderStatus"
+          )
+          .populate(
+            "userId",
+            "name email phone"
+          )
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(perPage),
 
-    const limitNumber =
-      Math.min(
-        Math.max(
-          Number(limit) || 20,
-          1
-        ),
-        100
-      );
-
-    const skip =
-      (pageNumber - 1) *
-      limitNumber;
-
-    const [
-      payments,
-      total,
-    ] = await Promise.all([
-      Payment.find(filter)
-        .populate(
-          "userId",
-          "name email mobileNumber"
-        )
-        .populate("orderId")
-        .sort({
-          createdAt: -1,
-        })
-        .skip(skip)
-        .limit(limitNumber),
-
-      Payment.countDocuments(
-        filter
-      ),
-    ]);
+        Payment.countDocuments(filter),
+      ]);
 
     return res.status(200).json({
       success: true,
@@ -998,44 +1024,42 @@ const getAllPayments = async (
       data: payments,
 
       pagination: {
+        page: currentPage,
+        limit: perPage,
         total,
-        page: pageNumber,
-        limit: limitNumber,
         totalPages:
-          Math.ceil(
-            total /
-            limitNumber
-          ),
+          Math.ceil(total / perPage),
       },
     });
   } catch (error) {
+    console.error(
+      "GET ALL PAYMENTS ERROR:",
+      error.message
+    );
+
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to get payments",
-      error:
-        error.message,
+      message: "Failed to get payments",
+      error: error.message,
     });
   }
 };
 
-// ============================================================
+// ======================================================
 // UPDATE PAYMENT STATUS
-// PUT /api/payments/:paymentId/status
-// ============================================================
+// PUT /api/payments/status/:paymentId
+// ======================================================
 
-const updatePaymentStatus = async (
+exports.updatePaymentStatus = async (
   req,
   res
 ) => {
   try {
-    const { paymentId } =
-      req.params;
+    const { paymentId } = req.params;
 
     const {
       status,
       failureReason,
-      refundAmount,
     } = req.body;
 
     const allowedStatuses = [
@@ -1049,17 +1073,21 @@ const updatePaymentStatus = async (
     ];
 
     if (
+      !status ||
       !allowedStatuses.includes(
-        status
+        status.toUpperCase()
       )
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "Invalid payment status",
-        allowedStatuses,
+        message: `Invalid status. Allowed values: ${allowedStatuses.join(
+          ", "
+        )}`,
       });
     }
+
+    const newStatus =
+      status.toUpperCase();
 
     const payment =
       await Payment.findOne({
@@ -1070,99 +1098,77 @@ const updatePaymentStatus = async (
     if (!payment) {
       return res.status(404).json({
         success: false,
-        message:
-          "Payment not found",
+        message: "Payment not found",
       });
     }
 
-    payment.status =
-      status;
+    payment.status = newStatus;
 
-    if (failureReason) {
+    if (failureReason !== undefined) {
       payment.failureReason =
         failureReason;
     }
 
-    if (
-      status ===
-      "SUCCESS"
-    ) {
+    if (newStatus === "SUCCESS") {
       payment.paidAt =
-        payment.paidAt ||
-        new Date();
+        payment.paidAt || new Date();
+
+      payment.failureReason = "";
 
       const order =
         await Order.findById(
           payment.orderId
         );
 
-      if (order) {
-        if (
-          order.paymentStatus !==
-          undefined
-        ) {
-          order.paymentStatus =
-            "PAID";
+      if (
+        order &&
+        order.paymentStatus !== undefined
+      ) {
+        order.paymentStatus = "PAID";
 
-          await order.save();
-        }
+        await order.save();
       }
     }
 
-    if (
-      status ===
-        "REFUNDED" ||
-      status ===
-        "PARTIALLY_REFUNDED"
-    ) {
+    if (newStatus === "REFUNDED") {
       payment.refundedAt =
-        payment.refundedAt ||
-        new Date();
-
-      if (
-        refundAmount !==
-        undefined
-      ) {
-        payment.refundAmount =
-          Number(
-            refundAmount
-          );
-      }
+        payment.refundedAt || new Date();
     }
 
     await payment.save();
 
     return res.status(200).json({
       success: true,
-
       message:
         "Payment status updated successfully",
-
       data: payment,
     });
   } catch (error) {
+    console.error(
+      "UPDATE PAYMENT STATUS ERROR:",
+      error.message
+    );
+
     return res.status(500).json({
       success: false,
       message:
         "Failed to update payment status",
-      error:
-        error.message,
+      error: error.message,
     });
   }
 };
 
-// ============================================================
-// DELETE PAYMENT
-// DELETE /api/payments/:paymentId
-// ============================================================
+// ======================================================
+// DELETE PAYMENT - SOFT DELETE
+// DELETE /api/payments/delete/:paymentId
+// ======================================================
 
-const deletePayment = async (
+exports.deletePayment = async (
   req,
   res
 ) => {
   try {
-    const { paymentId } =
-      req.params;
+    const { paymentId } = req.params;
 
     const payment =
       await Payment.findOne({
@@ -1173,16 +1179,12 @@ const deletePayment = async (
     if (!payment) {
       return res.status(404).json({
         success: false,
-        message:
-          "Payment not found",
+        message: "Payment not found",
       });
     }
 
-    payment.isDeleted =
-      true;
-
-    payment.deletedAt =
-      new Date();
+    payment.isDeleted = true;
+    payment.deletedAt = new Date();
 
     await payment.save();
 
@@ -1192,26 +1194,15 @@ const deletePayment = async (
         "Payment deleted successfully",
     });
   } catch (error) {
+    console.error(
+      "DELETE PAYMENT ERROR:",
+      error.message
+    );
+
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to delete payment",
-      error:
-        error.message,
+      message: "Failed to delete payment",
+      error: error.message,
     });
   }
-};
-
-// ============================================================
-// EXPORT
-// ============================================================
-
-module.exports = {
-  createCashfreePayment,
-  verifyCashfreePayment,
-  cashfreeWebhook,
-  getPaymentByOrder,
-  getAllPayments,
-  updatePaymentStatus,
-  deletePayment,
 };
