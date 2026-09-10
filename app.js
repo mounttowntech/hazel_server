@@ -201,7 +201,8 @@ app.use(
 );
 app.use("/api/similar-products",require("./src/routes/similarProductRoutes"));
 app.use("/api/inventory",require("./src/routes/inventoryRoutes"));
-app.use("/api/stock-history",require("./src/routes/stockHistoryRoutes"))
+app.use("/api/stock-history",require("./src/routes/stockHistoryRoutes"));
+app.use("/api/customers",require("./src/routes/customerRoutes"));
 // ==========================================================
 // 404 HANDLER
 // ==========================================================
