@@ -1,5 +1,9 @@
-
 const mongoose = require("mongoose");
+
+// *============================================================*
+// *SIZE SCHEMA*
+// *============================================================*
+
 const SizeSchema = new mongoose.Schema(
   {
     size: {
@@ -10,7 +14,6 @@ const SizeSchema = new mongoose.Schema(
       enum: ["S", "M", "L", "XL", "2XL", "3XL"],
     },
 
-    
     stockQuantity: {
       type: Number,
       default: 0,
@@ -38,6 +41,11 @@ const SizeSchema = new mongoose.Schema(
     _id: true,
   }
 );
+
+// *============================================================*
+// *MEDIA SCHEMA*
+// *============================================================*
+
 const MediaSchema = new mongoose.Schema(
   {
     type: {
@@ -62,6 +70,11 @@ const MediaSchema = new mongoose.Schema(
     _id: true,
   }
 );
+
+// *============================================================*
+// *OFFER SCHEMA*
+// *============================================================*
+
 const OfferSchema = new mongoose.Schema(
   {
     type: {
@@ -90,14 +103,28 @@ const OfferSchema = new mongoose.Schema(
     _id: false,
   }
 );
+
+// *============================================================*
+// *VARIANT SCHEMA*
+// *============================================================*
+
 const VariantSchema = new mongoose.Schema(
   {
+    // *----------------------------------------------------------*
+    // *COLOR*
+    // *----------------------------------------------------------*
+
     color: {
       type: String,
       required: true,
       trim: true,
       uppercase: true,
     },
+
+    // *----------------------------------------------------------*
+    // *MEDIA*
+    // *----------------------------------------------------------*
+
     media: {
       type: [MediaSchema],
       default: [],
@@ -111,6 +138,11 @@ const VariantSchema = new mongoose.Schema(
           "Maximum 10 media files are allowed for each color",
       },
     },
+
+    // *----------------------------------------------------------*
+    // *PRODUCT DETAILS*
+    // *----------------------------------------------------------*
+
     fabric: {
       type: String,
       trim: true,
@@ -146,11 +178,21 @@ const VariantSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+
+    // *----------------------------------------------------------*
+    // *TOTAL QUANTITY*
+    // *----------------------------------------------------------*
+
     quantity: {
       type: Number,
       default: 0,
       min: 0,
     },
+
+    // *----------------------------------------------------------*
+    // *PRICE*
+    // *----------------------------------------------------------*
+
     price: {
       type: Number,
       required: true,
@@ -162,8 +204,14 @@ const VariantSchema = new mongoose.Schema(
       default: null,
       min: 0,
     },
+
+    // *----------------------------------------------------------*
+    // *OFFER*
+    // *----------------------------------------------------------*
+
     offer: {
       type: OfferSchema,
+
       default: () => ({
         type: "none",
         value: 0,
@@ -171,10 +219,20 @@ const VariantSchema = new mongoose.Schema(
         endDate: null,
       }),
     },
+
+    // *----------------------------------------------------------*
+    // *SIZES*
+    // *----------------------------------------------------------*
+
     sizes: {
       type: [SizeSchema],
       default: [],
     },
+
+    // *----------------------------------------------------------*
+    // *STATUS*
+    // *----------------------------------------------------------*
+
     isActive: {
       type: Boolean,
       default: true,
@@ -184,30 +242,59 @@ const VariantSchema = new mongoose.Schema(
     _id: true,
   }
 );
+
+// *============================================================*
+// *PRODUCT SCHEMA*
+// *============================================================*
+
 const ProductSchema = new mongoose.Schema(
   {
+    // *----------------------------------------------------------*
+    // *CATEGORY*
+    // *----------------------------------------------------------*
+
     categoryId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
       required: false,
       default: null,
     },
+
+    // *----------------------------------------------------------*
+    // *SUB CATEGORY*
+    // *----------------------------------------------------------*
+
     subCategoryId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SubCategory",
       required: true,
     },
+
+    // *----------------------------------------------------------*
+    // *BRAND*
+    // *----------------------------------------------------------*
+
     brandId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Brand",
       required: false,
       default: null,
     },
-     name: {
+
+    // *----------------------------------------------------------*
+    // *PRODUCT NAME*
+    // *----------------------------------------------------------*
+
+    name: {
       type: String,
       required: true,
       trim: true,
     },
+
+    // *----------------------------------------------------------*
+    // *DESCRIPTION*
+    // *----------------------------------------------------------*
+
     description: {
       about: {
         type: String,
@@ -222,15 +309,48 @@ const ProductSchema = new mongoose.Schema(
       },
     },
 
+    // *----------------------------------------------------------*
+    // *RATING*
+    // *----------------------------------------------------------*
+
+    rating: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
+
+    // *----------------------------------------------------------*
+    // *REVIEW COUNT*
+    // *----------------------------------------------------------*
+
+    reviewCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // *----------------------------------------------------------*
+    // *VARIANTS*
+    // *----------------------------------------------------------*
+
     variants: {
       type: [VariantSchema],
       default: [],
     },
 
+    // *----------------------------------------------------------*
+    // *ACTIVE STATUS*
+    // *----------------------------------------------------------*
+
     isActive: {
       type: Boolean,
       default: true,
     },
+
+    // *----------------------------------------------------------*
+    // *DELETE STATUS*
+    // *----------------------------------------------------------*
 
     isDeleted: {
       type: Boolean,
@@ -242,9 +362,29 @@ const ProductSchema = new mongoose.Schema(
   }
 );
 
+// *============================================================*
+// *PRE SAVE - SYNC VARIANT QUANTITY*
+// *============================================================*
 
+ProductSchema.pre("save", function () {
+  if (Array.isArray(this.variants)) {
+    this.variants.forEach((variant) => {
+      if (Array.isArray(variant.sizes)) {
+        variant.quantity = variant.sizes.reduce(
+          (total, size) => {
+            return total + (Number(size.stockQuantity) || 0);
+          },
+          0
+        );
+      } else {
+        variant.quantity = 0;
+      }
+    });
+  }
+});
 
-
+// *============================================================*
+// *EXPORT*
+// *============================================================*
 
 module.exports = mongoose.model("Product", ProductSchema);
-

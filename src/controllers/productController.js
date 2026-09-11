@@ -1,11 +1,11 @@
-
 const Product = require("../models/productModel");
 const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 // ============================================================
-// HELPER - DELETE UPLOADED FILE
+// FILE HELPERS
 // ============================================================
 
 const deleteUploadedFile = (file) => {
@@ -26,7 +26,72 @@ const deleteUploadedFile = (file) => {
 };
 
 // ============================================================
-// HELPER - GENERATE RANDOM NUMBER
+// DELETE MEDIA FROM DISK
+// ============================================================
+
+const deleteMediaFile = (imageURL) => {
+  if (!imageURL) {
+    return;
+  }
+
+  try {
+    const relativePath = String(imageURL)
+      .replace(/^\/+/, "");
+
+    const absolutePath = path.resolve(
+      process.cwd(),
+      relativePath
+    );
+
+    const uploadsRoot = path.resolve(
+      process.cwd(),
+      "uploads"
+    );
+
+    // Security check
+    if (
+      absolutePath !== uploadsRoot &&
+      !absolutePath.startsWith(
+        `${uploadsRoot}${path.sep}`
+      )
+    ) {
+      console.error(
+        "Blocked invalid media deletion path:",
+        absolutePath
+      );
+
+      return;
+    }
+
+    if (fs.existsSync(absolutePath)) {
+      fs.unlinkSync(absolutePath);
+    }
+  } catch (error) {
+    console.error(
+      "Failed to delete media file:",
+      error.message
+    );
+  }
+};
+
+// ============================================================
+// DELETE MULTIPLE MEDIA
+// ============================================================
+
+const deleteMediaArray = (media = []) => {
+  if (!Array.isArray(media)) {
+    return;
+  }
+
+  media.forEach((item) => {
+    if (item?.imageURL) {
+      deleteMediaFile(item.imageURL);
+    }
+  });
+};
+
+// ============================================================
+// RANDOM NUMBER
 // ============================================================
 
 const generateRandomNumber = (length = 4) => {
@@ -34,12 +99,14 @@ const generateRandomNumber = (length = 4) => {
   const max = Math.pow(10, length) - 1;
 
   return Math.floor(
-    min + Math.random() * (max - min + 1)
+    min +
+      Math.random() *
+        (max - min + 1)
   );
 };
 
 // ============================================================
-// HELPER - CREATE COLOR CODE
+// COLOR CODE
 // ============================================================
 
 const createColorCode = (color) => {
@@ -50,18 +117,19 @@ const createColorCode = (color) => {
 };
 
 // ============================================================
-// HELPER - CREATE PRODUCT CODE
+// PRODUCT CODE
 // ============================================================
 
 const createProductCode = (productName) => {
   return String(productName || "")
     .replace(/[^a-zA-Z0-9]/g, "")
     .substring(0, 3)
-    .toUpperCase();
+    .toUpperCase()
+    .padEnd(3, "X");
 };
 
 // ============================================================
-// GENERATE UNIQUE SKU
+// GENERATE SKU
 // ============================================================
 
 const generateSKU = async (
@@ -82,7 +150,8 @@ const generateSKU = async (
     const randomNumber =
       generateRandomNumber(4);
 
-    sku = `${productCode}-${colorCode}-${size}-${randomNumber}`;
+    sku =
+      `${productCode}-${colorCode}-${size}-${randomNumber}`;
 
     exists = await Product.exists({
       "variants.sizes.sku": sku,
@@ -93,7 +162,7 @@ const generateSKU = async (
 };
 
 // ============================================================
-// GENERATE UNIQUE BARCODE
+// GENERATE BARCODE
 // ============================================================
 
 const generateBarcode = async () => {
@@ -101,10 +170,15 @@ const generateBarcode = async () => {
   let exists = true;
 
   while (exists) {
-    barcode = String(
-      890000000000 +
-        generateRandomNumber(9)
-    ).substring(0, 12);
+    // 12 digit barcode
+    barcode =
+      "89" +
+      crypto
+        .randomBytes(5)
+        .toString("hex")
+        .replace(/\D/g, "")
+        .padEnd(10, "0")
+        .substring(0, 10);
 
     exists = await Product.exists({
       "variants.sizes.barcode": barcode,
@@ -115,317 +189,52 @@ const generateBarcode = async () => {
 };
 
 // ============================================================
-// CALCULATE VARIANT QUANTITY
-// ============================================================
-//
-// quantity = total stock of all sizes
-//
-// Example:
-// S  = 5
-// M  = 10
-// L  = 8
-// XL = 2
-//
-// quantity = 25
+// CALCULATE QUANTITY
 // ============================================================
 
-const calculateVariantQuantity = (sizes) => {
+const calculateVariantQuantity = (
+  sizes
+) => {
   if (!Array.isArray(sizes)) {
     return 0;
   }
 
-  return sizes.reduce((total, size) => {
-    return (
-      total +
-      (Number(size.stockQuantity) || 0)
-    );
-  }, 0);
+  return sizes.reduce(
+    (total, size) => {
+      return (
+        total +
+        (Number(size.stockQuantity) || 0)
+      );
+    },
+    0
+  );
 };
 
 // ============================================================
-// PREPARE VARIANTS
+// PARSE JSON
 // ============================================================
 
-const prepareVariants = async (
-  variants,
-  productName
+const parseJSON = (
+  value,
+  fallback
 ) => {
-  if (!Array.isArray(variants)) {
-    return [];
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return fallback;
   }
 
-  const preparedVariants = [];
-
-  for (const variant of variants) {
-    // ----------------------------------------------------------
-    // COLOR
-    // ----------------------------------------------------------
-
-    const color = String(
-      variant.color || ""
-    )
-      .trim()
-      .toUpperCase();
-
-    if (!color) {
-      throw new Error(
-        "Variant color is required"
-      );
-    }
-
-    // ----------------------------------------------------------
-    // MEDIA
-    // ----------------------------------------------------------
-
-    const media = Array.isArray(
-      variant.media
-    )
-      ? variant.media
-      : [];
-
-    if (media.length > 10) {
-      throw new Error(
-        `Maximum 10 media files are allowed for ${color}`
-      );
-    }
-
-    // ----------------------------------------------------------
-    // SIZES
-    // ----------------------------------------------------------
-
-    const preparedSizes = [];
-
-    if (Array.isArray(variant.sizes)) {
-      for (const sizeData of variant.sizes) {
-        const size = String(
-          sizeData.size || ""
-        )
-          .trim()
-          .toUpperCase();
-
-        if (!size) {
-          continue;
-        }
-
-        const allowedSizes = [
-          "S",
-          "M",
-          "L",
-          "XL",
-          "2XL",
-          "3XL",
-        ];
-
-        if (!allowedSizes.includes(size)) {
-          throw new Error(
-            `Invalid size "${size}". Allowed sizes: ${allowedSizes.join(
-              ", "
-            )}`
-          );
-        }
-
-        // ------------------------------------------------------
-        // STOCK QUANTITY
-        // ------------------------------------------------------
-
-        const stockQuantity =
-          Number(
-            sizeData.stockQuantity
-          ) || 0;
-
-        if (stockQuantity < 0) {
-          throw new Error(
-            `Stock quantity cannot be negative for size ${size}`
-          );
-        }
-
-        // ------------------------------------------------------
-        // SKU
-        // ------------------------------------------------------
-
-        const sku =
-          sizeData.sku ||
-          (await generateSKU(
-            productName,
-            color,
-            size
-          ));
-
-        // ------------------------------------------------------
-        // BARCODE
-        // ------------------------------------------------------
-
-        const barcode =
-          sizeData.barcode ||
-          (await generateBarcode());
-
-        // ------------------------------------------------------
-        // PUSH SIZE
-        // ------------------------------------------------------
-
-        preparedSizes.push({
-          size,
-
-          stockQuantity,
-
-          sku,
-
-          barcode,
-
-          isActive:
-            sizeData.isActive !==
-            undefined
-              ? Boolean(
-                  sizeData.isActive
-                )
-              : true,
-        });
-      }
-    }
-
-    // ----------------------------------------------------------
-    // CALCULATE TOTAL QUANTITY
-    // ----------------------------------------------------------
-
-    const quantity =
-      calculateVariantQuantity(
-        preparedSizes
-      );
-
-    // ----------------------------------------------------------
-    // DISCOUNT PRICE
-    // ----------------------------------------------------------
-
-    let discountPrice = null;
-
-    if (
-      variant.discountPrice !==
-        undefined &&
-      variant.discountPrice !== null &&
-      variant.discountPrice !== ""
-    ) {
-      discountPrice = Number(
-        variant.discountPrice
-      );
-
-      if (
-        Number.isNaN(discountPrice) ||
-        discountPrice < 0
-      ) {
-        throw new Error(
-          `Invalid discount price for ${color}`
-        );
-      }
-    }
-
-    // ----------------------------------------------------------
-    // PRICE
-    // ----------------------------------------------------------
-
-    const price =
-      Number(variant.price);
-
-    if (
-      Number.isNaN(price) ||
-      price < 0
-    ) {
-      throw new Error(
-        `Invalid price for ${color}`
-      );
-    }
-
-    // ----------------------------------------------------------
-    // OFFER
-    // ----------------------------------------------------------
-
-    const offerType =
-      variant.offer?.type || "none";
-
-    const offerValue =
-      Number(
-        variant.offer?.value
-      ) || 0;
-
-    const offerStartDate =
-      variant.offer?.startDate ||
-      null;
-
-    const offerEndDate =
-      variant.offer?.endDate ||
-      null;
-
-    if (
-      ![
-        "percentage",
-        "fixed",
-        "none",
-      ].includes(offerType)
-    ) {
-      throw new Error(
-        `Invalid offer type for ${color}`
-      );
-    }
-
-    // ----------------------------------------------------------
-    // PREPARED VARIANT
-    // ----------------------------------------------------------
-
-    preparedVariants.push({
-      color,
-
-      media,
-
-      fabric:
-        variant.fabric || "",
-
-      feel:
-        variant.feel || "",
-
-      lining:
-        variant.lining || "",
-
-      sleeves:
-        variant.sleeves || "",
-
-      finishing:
-        variant.finishing || "",
-
-      pocket:
-        variant.pocket || "",
-
-      // Automatically calculated
-      quantity,
-
-      price,
-
-      discountPrice,
-
-      offer: {
-        type: offerType,
-
-        value: offerValue,
-
-        startDate:
-          offerStartDate,
-
-        endDate:
-          offerEndDate,
-      },
-
-      sizes:
-        preparedSizes,
-
-      isActive:
-        variant.isActive !==
-        undefined
-          ? Boolean(
-              variant.isActive
-            )
-          : true,
-    });
+  if (typeof value !== "string") {
+    return value;
   }
 
-  return preparedVariants;
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return fallback;
+  }
 };
 
 // ============================================================
@@ -442,9 +251,7 @@ const prepareUploadedMedia = (
   return files.map((file) => {
     const isVideo =
       file.mimetype &&
-      file.mimetype.startsWith(
-        "video/"
-      );
+      file.mimetype.startsWith("video/");
 
     return {
       type: isVideo
@@ -457,6 +264,712 @@ const prepareUploadedMedia = (
       thumbnail: null,
     };
   });
+};
+
+// ============================================================
+// NORMALIZE MEDIA
+// ============================================================
+
+const normalizeMedia = (
+  media
+) => {
+  if (!Array.isArray(media)) {
+    return [];
+  }
+
+  return media
+    .filter(
+      (item) =>
+        item &&
+        item.imageURL
+    )
+    .map((item) => ({
+      _id:
+        item._id ||
+        new mongoose.Types.ObjectId(),
+
+      type:
+        item.type === "video"
+          ? "video"
+          : "image",
+
+      imageURL: String(
+        item.imageURL
+      ),
+
+      thumbnail:
+        item.thumbnail || null,
+    }));
+};
+
+// ============================================================
+// PREPARE VARIANTS
+// ============================================================
+
+const prepareVariants = async (
+  variants,
+  productName,
+  existingVariants = []
+) => {
+  if (!Array.isArray(variants)) {
+    return [];
+  }
+
+  const preparedVariants = [];
+
+  const allowedSizes = [
+    "S",
+    "M",
+    "L",
+    "XL",
+    "2XL",
+    "3XL",
+  ];
+
+  for (
+    const variant of variants
+  ) {
+    const color = String(
+      variant.color || ""
+    )
+      .trim()
+      .toUpperCase();
+
+    if (!color) {
+      throw new Error(
+        "Variant color is required"
+      );
+    }
+
+    // --------------------------------------------------------
+    // FIND EXISTING VARIANT
+    // --------------------------------------------------------
+
+    let existingVariant = null;
+
+    if (variant._id) {
+      existingVariant =
+        existingVariants.id(
+          variant._id
+        );
+    }
+
+    if (!existingVariant) {
+      existingVariant =
+        existingVariants.find(
+          (item) =>
+            String(item.color)
+              .trim()
+              .toUpperCase() ===
+            color
+        );
+    }
+
+    // --------------------------------------------------------
+    // MEDIA PRESERVATION
+    // --------------------------------------------------------
+
+    let media;
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        variant,
+        "media"
+      )
+    ) {
+      media =
+        normalizeMedia(
+          variant.media
+        );
+    } else if (
+      existingVariant
+    ) {
+      media =
+        normalizeMedia(
+          existingVariant.media
+        );
+    } else {
+      media = [];
+    }
+
+    if (media.length > 10) {
+      throw new Error(
+        `Maximum 10 media files are allowed for ${color}`
+      );
+    }
+
+    // --------------------------------------------------------
+    // SIZES
+    // --------------------------------------------------------
+
+    const preparedSizes = [];
+
+    const usedSizes = new Set();
+
+    if (
+      Array.isArray(
+        variant.sizes
+      )
+    ) {
+      for (
+        const sizeData of
+          variant.sizes
+      ) {
+        const size = String(
+          sizeData.size || ""
+        )
+          .trim()
+          .toUpperCase();
+
+        if (!size) {
+          continue;
+        }
+
+        if (
+          !allowedSizes.includes(
+            size
+          )
+        ) {
+          throw new Error(
+            `Invalid size "${size}". Allowed sizes: ${allowedSizes.join(
+              ", "
+            )}`
+          );
+        }
+
+        if (
+          usedSizes.has(size)
+        ) {
+          throw new Error(
+            `Duplicate size "${size}" is not allowed for ${color}`
+          );
+        }
+
+        usedSizes.add(size);
+
+        const stockQuantity =
+          Number(
+            sizeData.stockQuantity
+          ) || 0;
+
+        if (stockQuantity < 0) {
+          throw new Error(
+            `Stock quantity cannot be negative for size ${size}`
+          );
+        }
+
+        // ------------------------------------------------------
+        // EXISTING SIZE
+        // ------------------------------------------------------
+
+        let existingSize = null;
+
+        if (
+          existingVariant &&
+          sizeData._id
+        ) {
+          existingSize =
+            existingVariant.sizes.id(
+              sizeData._id
+            );
+        }
+
+        if (!existingSize) {
+          existingSize =
+            existingVariant?.sizes?.find(
+              (item) =>
+                item.size ===
+                size
+            );
+        }
+
+        const sku =
+          sizeData.sku ||
+          existingSize?.sku ||
+          (await generateSKU(
+            productName,
+            color,
+            size
+          ));
+
+        const barcode =
+          sizeData.barcode ||
+          existingSize?.barcode ||
+          (await generateBarcode());
+
+        preparedSizes.push({
+          _id:
+            sizeData._id ||
+            existingSize?._id ||
+            new mongoose.Types.ObjectId(),
+
+          size,
+
+          stockQuantity,
+
+          sku,
+
+          barcode,
+
+          isActive:
+            sizeData.isActive !==
+            undefined
+              ? Boolean(
+                  sizeData.isActive
+                )
+              : existingSize
+              ? Boolean(
+                  existingSize.isActive
+                )
+              : true,
+        });
+      }
+    }
+
+    // --------------------------------------------------------
+    // QUANTITY
+    // --------------------------------------------------------
+
+    const quantity =
+      calculateVariantQuantity(
+        preparedSizes
+      );
+
+    // --------------------------------------------------------
+    // PRICE
+    // --------------------------------------------------------
+
+    const price =
+      Number(variant.price);
+
+    if (
+      Number.isNaN(price) ||
+      price < 0
+    ) {
+      throw new Error(
+        `Invalid price for ${color}`
+      );
+    }
+
+    // --------------------------------------------------------
+    // DISCOUNT PRICE
+    // --------------------------------------------------------
+
+    let discountPrice = null;
+
+    if (
+      variant.discountPrice !==
+        undefined &&
+      variant.discountPrice !==
+        null &&
+      variant.discountPrice !== ""
+    ) {
+      discountPrice = Number(
+        variant.discountPrice
+      );
+
+      if (
+        Number.isNaN(
+          discountPrice
+        ) ||
+        discountPrice < 0
+      ) {
+        throw new Error(
+          `Invalid discount price for ${color}`
+        );
+      }
+
+      if (
+        discountPrice > price
+      ) {
+        throw new Error(
+          `Discount price cannot be greater than price for ${color}`
+        );
+      }
+    }
+
+    // --------------------------------------------------------
+    // OFFER
+    // --------------------------------------------------------
+
+    const offer =
+      variant.offer || {};
+
+    const offerType =
+      offer.type || "none";
+
+    const offerValue =
+      Number(
+        offer.value
+      ) || 0;
+
+    const offerStartDate =
+      offer.startDate ||
+      null;
+
+    const offerEndDate =
+      offer.endDate ||
+      null;
+
+    if (
+      ![
+        "percentage",
+        "fixed",
+        "none",
+      ].includes(offerType)
+    ) {
+      throw new Error(
+        `Invalid offer type for ${color}`
+      );
+    }
+
+    if (
+      offerValue < 0
+    ) {
+      throw new Error(
+        `Offer value cannot be negative for ${color}`
+      );
+    }
+
+    if (
+      offerType ===
+        "percentage" &&
+      offerValue > 100
+    ) {
+      throw new Error(
+        `Percentage offer cannot exceed 100 for ${color}`
+      );
+    }
+
+    if (
+      offerType === "fixed" &&
+      offerValue > price
+    ) {
+      throw new Error(
+        `Fixed offer cannot be greater than price for ${color}`
+      );
+    }
+
+    let parsedStartDate =
+      null;
+
+    let parsedEndDate =
+      null;
+
+    if (offerStartDate) {
+      parsedStartDate =
+        new Date(
+          offerStartDate
+        );
+
+      if (
+        Number.isNaN(
+          parsedStartDate.getTime()
+        )
+      ) {
+        throw new Error(
+          `Invalid offer start date for ${color}`
+        );
+      }
+    }
+
+    if (offerEndDate) {
+      parsedEndDate =
+        new Date(
+          offerEndDate
+        );
+
+      if (
+        Number.isNaN(
+          parsedEndDate.getTime()
+        )
+      ) {
+        throw new Error(
+          `Invalid offer end date for ${color}`
+        );
+      }
+    }
+
+    if (
+      parsedStartDate &&
+      parsedEndDate &&
+      parsedStartDate >
+        parsedEndDate
+    ) {
+      throw new Error(
+        `Offer start date cannot be after end date for ${color}`
+      );
+    }
+
+    // --------------------------------------------------------
+    // PREPARED VARIANT
+    // --------------------------------------------------------
+
+    preparedVariants.push({
+      _id:
+        variant._id ||
+        existingVariant?._id ||
+        new mongoose.Types.ObjectId(),
+
+      color,
+
+      media,
+
+      fabric:
+        variant.fabric !==
+        undefined
+          ? String(
+              variant.fabric
+            ).trim()
+          : existingVariant
+          ? existingVariant.fabric
+          : "",
+
+      feel:
+        variant.feel !==
+        undefined
+          ? String(
+              variant.feel
+            ).trim()
+          : existingVariant
+          ? existingVariant.feel
+          : "",
+
+      lining:
+        variant.lining !==
+        undefined
+          ? String(
+              variant.lining
+            ).trim()
+          : existingVariant
+          ? existingVariant.lining
+          : "",
+
+      sleeves:
+        variant.sleeves !==
+        undefined
+          ? String(
+              variant.sleeves
+            ).trim()
+          : existingVariant
+          ? existingVariant.sleeves
+          : "",
+
+      finishing:
+        variant.finishing !==
+        undefined
+          ? String(
+              variant.finishing
+            ).trim()
+          : existingVariant
+          ? existingVariant.finishing
+          : "",
+
+      pocket:
+        variant.pocket !==
+        undefined
+          ? String(
+              variant.pocket
+            ).trim()
+          : existingVariant
+          ? existingVariant.pocket
+          : "",
+
+      quantity,
+
+      price,
+
+      discountPrice,
+
+      offer: {
+        type: offerType,
+        value: offerValue,
+        startDate:
+          parsedStartDate,
+        endDate:
+          parsedEndDate,
+      },
+
+      sizes:
+        preparedSizes,
+
+      isActive:
+        variant.isActive !==
+        undefined
+          ? Boolean(
+              variant.isActive
+            )
+          : existingVariant
+          ? Boolean(
+              existingVariant.isActive
+            )
+          : true,
+    });
+  }
+
+  return preparedVariants;
+};
+
+// ============================================================
+// VALIDATE ID
+// ============================================================
+
+const isValidObjectId = (
+  id
+) => {
+  return mongoose.Types.ObjectId.isValid(
+    id
+  );
+};
+
+// ============================================================
+// PARSE MEDIA COLORS
+//
+// Example:
+//
+// mediaColors = ["RED", "RED", "BLUE"]
+//
+// media files must be in same order:
+// red1.jpg
+// red2.jpg
+// blue1.jpg
+// ============================================================
+
+const parseMediaColors = (
+  value,
+  fileCount
+) => {
+  if (
+    value === undefined ||
+    value === null
+  ) {
+    return [];
+  }
+
+  let parsed =
+    value;
+
+  if (
+    typeof value === "string"
+  ) {
+    try {
+      parsed =
+        JSON.parse(value);
+    } catch (error) {
+      parsed = value
+        .split(",")
+        .map((item) =>
+          item.trim()
+        )
+        .filter(Boolean);
+    }
+  }
+
+  if (!Array.isArray(parsed)) {
+    parsed = [parsed];
+  }
+
+  const colors =
+    parsed.map((color) =>
+      String(color)
+        .trim()
+        .toUpperCase()
+    );
+
+  if (
+    colors.length !==
+    fileCount
+  ) {
+    throw new Error(
+      `mediaColors count (${colors.length}) must match uploaded media count (${fileCount})`
+    );
+  }
+
+  return colors;
+};
+
+// ============================================================
+// ATTACH UPLOADED MEDIA BY COLOR
+// ============================================================
+
+const attachUploadedMediaByColor = ({
+  variants,
+  files,
+  mediaColors,
+}) => {
+  if (
+    !Array.isArray(files) ||
+    files.length === 0
+  ) {
+    return;
+  }
+
+  const uploadedMedia =
+    prepareUploadedMedia(
+      files
+    );
+
+  const colorMapping =
+    mediaColors;
+
+  if (
+    !Array.isArray(
+      colorMapping
+    ) ||
+    colorMapping.length !==
+      uploadedMedia.length
+  ) {
+    throw new Error(
+      "mediaColors must be supplied for every uploaded media file"
+    );
+  }
+
+  uploadedMedia.forEach(
+    (media, index) => {
+      const color =
+        colorMapping[index];
+
+      const variant =
+        variants.find(
+          (item) =>
+            item.color ===
+            color
+        );
+
+      if (!variant) {
+        throw new Error(
+          `Uploaded media color "${color}" does not exist in product variants`
+        );
+      }
+
+      if (
+        variant.media.length >=
+        10
+      ) {
+        throw new Error(
+          `Maximum 10 media files are allowed for ${color}`
+        );
+      }
+
+      variant.media.push(
+        media
+      );
+    }
+  );
+
+  // Final validation
+  variants.forEach(
+    (variant) => {
+      if (
+        variant.media.length >
+        10
+      ) {
+        throw new Error(
+          `Maximum 10 media files are allowed for ${variant.color}`
+        );
+      }
+    }
+  );
 };
 
 // ============================================================
@@ -478,9 +991,9 @@ exports.createProduct = async (
       variants,
     } = req.body;
 
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
     // VALIDATE SUB CATEGORY
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
 
     if (!subCategoryId) {
       if (req.files) {
@@ -496,11 +1009,11 @@ exports.createProduct = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // VALIDATE BRAND
-    // ----------------------------------------------------------
-
-    if (!brandId) {
+    if (
+      !isValidObjectId(
+        subCategoryId
+      )
+    ) {
       if (req.files) {
         req.files.forEach(
           deleteUploadedFile
@@ -510,13 +1023,59 @@ exports.createProduct = async (
       return res.status(400).json({
         success: false,
         message:
-          "brandId is required",
+          "Invalid subCategory ID",
       });
     }
 
-    // ----------------------------------------------------------
-    // VALIDATE NAME
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // BRAND
+    // --------------------------------------------------------
+
+    if (
+      brandId &&
+      !isValidObjectId(
+        brandId
+      )
+    ) {
+      if (req.files) {
+        req.files.forEach(
+          deleteUploadedFile
+        );
+      }
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid brand ID",
+      });
+    }
+
+    // --------------------------------------------------------
+    // CATEGORY
+    // --------------------------------------------------------
+
+    if (
+      categoryId &&
+      !isValidObjectId(
+        categoryId
+      )
+    ) {
+      if (req.files) {
+        req.files.forEach(
+          deleteUploadedFile
+        );
+      }
+
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid category ID",
+      });
+    }
+
+    // --------------------------------------------------------
+    // PRODUCT NAME
+    // --------------------------------------------------------
 
     if (
       !name ||
@@ -535,59 +1094,30 @@ exports.createProduct = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // PARSE DESCRIPTION
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // DESCRIPTION
+    // --------------------------------------------------------
 
-    let parsedDescription =
-      description || {};
-
-    if (
-      typeof description ===
-      "string"
-    ) {
-      try {
-        parsedDescription =
-          JSON.parse(description);
-      } catch (error) {
-        parsedDescription = {
-          about: description,
+    const parsedDescription =
+      parseJSON(
+        description,
+        {
+          about: "",
           itemDetails: "",
-        };
-      }
-    }
-
-    // ----------------------------------------------------------
-    // PARSE VARIANTS
-    // ----------------------------------------------------------
-
-    let parsedVariants = variants;
-
-    if (
-      typeof variants ===
-      "string"
-    ) {
-      try {
-        parsedVariants =
-          JSON.parse(variants);
-      } catch (error) {
-        if (req.files) {
-          req.files.forEach(
-            deleteUploadedFile
-          );
         }
+      );
 
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid variants JSON",
-        });
-      }
-    }
+    // --------------------------------------------------------
+    // VARIANTS
+    // --------------------------------------------------------
+
+    const parsedVariants =
+      parseJSON(
+        variants,
+        []
+      );
 
     if (
-      parsedVariants !==
-        undefined &&
       !Array.isArray(
         parsedVariants
       )
@@ -605,22 +1135,8 @@ exports.createProduct = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // PREPARE VARIANTS
-    // ----------------------------------------------------------
-
-    const preparedVariants =
-      await prepareVariants(
-        parsedVariants || [],
-        String(name).trim()
-      );
-
-    // ----------------------------------------------------------
-    // CHECK VARIANTS
-    // ----------------------------------------------------------
-
     if (
-      preparedVariants.length ===
+      parsedVariants.length ===
       0
     ) {
       if (req.files) {
@@ -636,9 +1152,19 @@ exports.createProduct = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // CHECK DUPLICATE COLORS
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // PREPARE VARIANTS
+    // --------------------------------------------------------
+
+    const preparedVariants =
+      await prepareVariants(
+        parsedVariants,
+        String(name).trim()
+      );
+
+    // --------------------------------------------------------
+    // DUPLICATE COLORS
+    // --------------------------------------------------------
 
     const colors =
       preparedVariants.map(
@@ -666,48 +1192,31 @@ exports.createProduct = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // PREPARE UPLOADED MEDIA
-    // ----------------------------------------------------------
-
-    const uploadedMedia =
-      prepareUploadedMedia(
-        req.files
-      );
-
-    // ----------------------------------------------------------
-    // ASSIGN MEDIA TO FIRST VARIANT
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // ATTACH MEDIA TO CORRECT COLOR
+    // --------------------------------------------------------
 
     if (
-      uploadedMedia.length > 0
+      req.files &&
+      req.files.length > 0
     ) {
-      if (
-        preparedVariants[0]
-          .media.length +
-          uploadedMedia.length >
-        10
-      ) {
-        if (req.files) {
-          req.files.forEach(
-            deleteUploadedFile
-          );
-        }
+      const mediaColors =
+        parseMediaColors(
+          req.body.mediaColors,
+          req.files.length
+        );
 
-        return res.status(400).json({
-          success: false,
-          message:
-            "Maximum 10 media files are allowed for the first color variant",
-        });
-      }
-
-      preparedVariants[0].media =
-        uploadedMedia;
+      attachUploadedMediaByColor({
+        variants:
+          preparedVariants,
+        files: req.files,
+        mediaColors,
+      });
     }
 
-    // ----------------------------------------------------------
-    // CREATE PRODUCT
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // CREATE
+    // --------------------------------------------------------
 
     const product =
       await Product.create({
@@ -740,16 +1249,10 @@ exports.createProduct = async (
         isDeleted: false,
       });
 
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
-
     return res.status(201).json({
       success: true,
-
       message:
         "Product created successfully",
-
       data: product,
     });
   } catch (error) {
@@ -766,10 +1269,8 @@ exports.createProduct = async (
 
     return res.status(500).json({
       success: false,
-
       message:
         "Failed to create product",
-
       error: error.message,
     });
   }
@@ -793,6 +1294,17 @@ exports.getAllProducts = async (
       subCategoryId,
       brandId,
       isActive,
+      size,
+      variant,
+      fabric,
+      color,
+      max_price,
+      max_price_range,
+      price_range_option,
+      features,
+      sleeve,
+      availability,
+      rating,
     } = req.query;
 
     const pageNumber =
@@ -802,22 +1314,29 @@ exports.getAllProducts = async (
       );
 
     const limitNumber =
-      Math.max(
-        Number(limit) || 10,
-        1
+      Math.min(
+        Math.max(
+          Number(limit) || 10,
+          1
+        ),
+        100
       );
 
     const skip =
       (pageNumber - 1) *
       limitNumber;
 
-    // ----------------------------------------------------------
-    // FILTER
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // BASE FILTER
+    // --------------------------------------------------------
 
     const filter = {
       isDeleted: false,
     };
+
+    // --------------------------------------------------------
+    // SEARCH
+    // --------------------------------------------------------
 
     if (
       search &&
@@ -830,9 +1349,13 @@ exports.getAllProducts = async (
       };
     }
 
+    // --------------------------------------------------------
+    // CATEGORY
+    // --------------------------------------------------------
+
     if (categoryId) {
       if (
-        !mongoose.Types.ObjectId.isValid(
+        !isValidObjectId(
           categoryId
         )
       ) {
@@ -847,9 +1370,13 @@ exports.getAllProducts = async (
         categoryId;
     }
 
+    // --------------------------------------------------------
+    // SUB CATEGORY
+    // --------------------------------------------------------
+
     if (subCategoryId) {
       if (
-        !mongoose.Types.ObjectId.isValid(
+        !isValidObjectId(
           subCategoryId
         )
       ) {
@@ -864,9 +1391,13 @@ exports.getAllProducts = async (
         subCategoryId;
     }
 
+    // --------------------------------------------------------
+    // BRAND
+    // --------------------------------------------------------
+
     if (brandId) {
       if (
-        !mongoose.Types.ObjectId.isValid(
+        !isValidObjectId(
           brandId
         )
       ) {
@@ -881,16 +1412,339 @@ exports.getAllProducts = async (
         brandId;
     }
 
+    // --------------------------------------------------------
+    // ACTIVE
+    // --------------------------------------------------------
+
     if (
-      isActive !== undefined
+      isActive !==
+      undefined
     ) {
       filter.isActive =
         isActive === "true";
     }
 
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // SIZE
+    // --------------------------------------------------------
+
+    const targetSize =
+      size || variant;
+
+    if (targetSize) {
+      const sizesArray =
+        Array.isArray(
+          targetSize
+        )
+          ? targetSize
+          : [
+              targetSize,
+            ];
+
+      filter.variants =
+        filter.variants || {};
+
+      filter.variants.$elemMatch =
+        {
+          sizes: {
+            $elemMatch: {
+              size: {
+                $in: sizesArray.map(
+                  (item) =>
+                    String(
+                      item
+                    ).toUpperCase()
+                ),
+              },
+            },
+          },
+        };
+    }
+
+    // --------------------------------------------------------
+    // FABRIC
+    // --------------------------------------------------------
+
+    if (fabric) {
+      const fabricsArray =
+        Array.isArray(
+          fabric
+        )
+          ? fabric
+          : [fabric];
+
+      filter.variants =
+        filter.variants || {};
+
+      filter.variants.$elemMatch =
+        {
+          ...(filter.variants.$elemMatch ||
+            {}),
+          fabric: {
+            $in: fabricsArray,
+          },
+        };
+    }
+
+    // --------------------------------------------------------
+    // COLOR
+    // --------------------------------------------------------
+
+    if (color) {
+      const colorsArray =
+        Array.isArray(
+          color
+        )
+          ? color
+          : [color];
+
+      filter.variants =
+        filter.variants || {};
+
+      filter.variants.$elemMatch =
+        {
+          ...(filter.variants.$elemMatch ||
+            {}),
+          color: {
+            $in: colorsArray.map(
+              (item) =>
+                String(
+                  item
+                ).toUpperCase()
+            ),
+          },
+        };
+    }
+
+    // --------------------------------------------------------
+    // FEATURES / POCKET
+    // --------------------------------------------------------
+
+    if (features) {
+      const featuresArray =
+        Array.isArray(
+          features
+        )
+          ? features
+          : [features];
+
+      filter.variants =
+        filter.variants || {};
+
+      filter.variants.$elemMatch =
+        {
+          ...(filter.variants.$elemMatch ||
+            {}),
+          pocket: {
+            $in: featuresArray,
+          },
+        };
+    }
+
+    // --------------------------------------------------------
+    // SLEEVE
+    // --------------------------------------------------------
+
+    if (sleeve) {
+      const sleeveArray =
+        Array.isArray(
+          sleeve
+        )
+          ? sleeve
+          : [sleeve];
+
+      filter.variants =
+        filter.variants || {};
+
+      filter.variants.$elemMatch =
+        {
+          ...(filter.variants.$elemMatch ||
+            {}),
+          sleeves: {
+            $in: sleeveArray,
+          },
+        };
+    }
+
+    // --------------------------------------------------------
+    // AVAILABILITY
+    // --------------------------------------------------------
+
+    if (availability) {
+      filter.variants =
+        filter.variants || {};
+
+      if (
+        availability ===
+        "in-stock"
+      ) {
+        filter.variants.$elemMatch =
+          {
+            ...(filter.variants.$elemMatch ||
+              {}),
+            quantity: {
+              $gt: 0,
+            },
+          };
+      }
+
+      if (
+        availability ===
+        "out-of-stock"
+      ) {
+        filter.variants.$elemMatch =
+          {
+            ...(filter.variants.$elemMatch ||
+              {}),
+            quantity: {
+              $lte: 0,
+            },
+          };
+      }
+    }
+
+    // --------------------------------------------------------
+    // RATING
+    // --------------------------------------------------------
+
+    if (
+      rating &&
+      rating !== "any"
+    ) {
+      const minRating =
+        Number(rating);
+
+      if (
+        !Number.isNaN(
+          minRating
+        )
+      ) {
+        filter.rating = {
+          $gte: minRating,
+        };
+      }
+    }
+
+    // --------------------------------------------------------
+    // PRICE
+    // --------------------------------------------------------
+
+    const priceOption =
+      price_range_option ||
+      ([
+        "under_1000",
+        "1000_1500",
+        "1500_2000",
+        "above_2000",
+      ].includes(max_price)
+        ? max_price
+        : null);
+
+    if (priceOption) {
+      let priceCondition;
+
+      if (
+        priceOption ===
+        "under_1000"
+      ) {
+        priceCondition = {
+          $lt: 1000,
+        };
+      }
+
+      if (
+        priceOption ===
+        "1000_1500"
+      ) {
+        priceCondition = {
+          $gte: 1000,
+          $lte: 1500,
+        };
+      }
+
+      if (
+        priceOption ===
+        "1500_2000"
+      ) {
+        priceCondition = {
+          $gte: 1500,
+          $lte: 2000,
+        };
+      }
+
+      if (
+        priceOption ===
+        "above_2000"
+      ) {
+        priceCondition = {
+          $gt: 2000,
+        };
+      }
+
+      if (priceCondition) {
+        filter.variants =
+          filter.variants || {};
+
+        filter.variants.$elemMatch =
+          {
+            ...(filter.variants.$elemMatch ||
+              {}),
+            $or: [
+              {
+                price:
+                  priceCondition,
+              },
+              {
+                discountPrice:
+                  priceCondition,
+              },
+            ],
+          };
+      }
+    } else {
+      const activeMaxPrice =
+        max_price_range;
+
+      if (
+        activeMaxPrice &&
+        !Number.isNaN(
+          Number(
+            activeMaxPrice
+          )
+        )
+      ) {
+        filter.variants =
+          filter.variants || {};
+
+        filter.variants.$elemMatch =
+          {
+            ...(filter.variants.$elemMatch ||
+              {}),
+            $or: [
+              {
+                price: {
+                  $lte:
+                    Number(
+                      activeMaxPrice
+                    ),
+                },
+              },
+              {
+                discountPrice: {
+                  $lte:
+                    Number(
+                      activeMaxPrice
+                    ),
+                },
+              },
+            ],
+          };
+      }
+    }
+
+    // --------------------------------------------------------
     // QUERY
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
 
     const [
       products,
@@ -910,10 +1764,6 @@ exports.getAllProducts = async (
         filter
       ),
     ]);
-
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
 
     return res.status(200).json({
       success: true,
@@ -945,10 +1795,8 @@ exports.getAllProducts = async (
 
     return res.status(500).json({
       success: false,
-
       message:
         "Failed to fetch products",
-
       error: error.message,
     });
   }
@@ -968,12 +1816,8 @@ exports.getProductById = async (
       productId,
     } = req.params;
 
-    // ----------------------------------------------------------
-    // VALIDATE ID
-    // ----------------------------------------------------------
-
     if (
-      !mongoose.Types.ObjectId.isValid(
+      !isValidObjectId(
         productId
       )
     ) {
@@ -983,10 +1827,6 @@ exports.getProductById = async (
           "Invalid product ID",
       });
     }
-
-    // ----------------------------------------------------------
-    // FIND PRODUCT
-    // ----------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -1005,16 +1845,10 @@ exports.getProductById = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
-
     return res.status(200).json({
       success: true,
-
       message:
         "Product fetched successfully",
-
       data: product,
     });
   } catch (error) {
@@ -1025,10 +1859,8 @@ exports.getProductById = async (
 
     return res.status(500).json({
       success: false,
-
       message:
         "Failed to fetch product",
-
       error: error.message,
     });
   }
@@ -1048,12 +1880,8 @@ exports.updateProduct = async (
       productId,
     } = req.params;
 
-    // ----------------------------------------------------------
-    // VALIDATE PRODUCT ID
-    // ----------------------------------------------------------
-
     if (
-      !mongoose.Types.ObjectId.isValid(
+      !isValidObjectId(
         productId
       )
     ) {
@@ -1069,10 +1897,6 @@ exports.updateProduct = async (
           "Invalid product ID",
       });
     }
-
-    // ----------------------------------------------------------
-    // FIND PRODUCT
-    // ----------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -1104,24 +1928,47 @@ exports.updateProduct = async (
       isActive,
     } = req.body;
 
-    // ----------------------------------------------------------
-    // BASIC FIELDS
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // CATEGORY
+    // --------------------------------------------------------
 
     if (
       categoryId !==
       undefined
     ) {
+      if (
+        categoryId &&
+        !isValidObjectId(
+          categoryId
+        )
+      ) {
+        if (req.files) {
+          req.files.forEach(
+            deleteUploadedFile
+          );
+        }
+
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid category ID",
+        });
+      }
+
       product.categoryId =
         categoryId || null;
     }
+
+    // --------------------------------------------------------
+    // SUB CATEGORY
+    // --------------------------------------------------------
 
     if (
       subCategoryId !==
       undefined
     ) {
       if (
-        !mongoose.Types.ObjectId.isValid(
+        !isValidObjectId(
           subCategoryId
         )
       ) {
@@ -1142,15 +1989,45 @@ exports.updateProduct = async (
         subCategoryId;
     }
 
+    // --------------------------------------------------------
+    // BRAND
+    // --------------------------------------------------------
+
     if (
       brandId !==
       undefined
     ) {
+      if (
+        brandId &&
+        !isValidObjectId(
+          brandId
+        )
+      ) {
+        if (req.files) {
+          req.files.forEach(
+            deleteUploadedFile
+          );
+        }
+
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid brand ID",
+        });
+      }
+
       product.brandId =
         brandId || null;
     }
 
-    if (name !== undefined) {
+    // --------------------------------------------------------
+    // NAME
+    // --------------------------------------------------------
+
+    if (
+      name !==
+      undefined
+    ) {
       if (
         !String(name).trim()
       ) {
@@ -1171,6 +2048,10 @@ exports.updateProduct = async (
         String(name).trim();
     }
 
+    // --------------------------------------------------------
+    // ACTIVE
+    // --------------------------------------------------------
+
     if (
       isActive !==
       undefined
@@ -1180,33 +2061,22 @@ exports.updateProduct = async (
         isActive === "true";
     }
 
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
     // DESCRIPTION
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
 
     if (
       description !==
       undefined
     ) {
-      let parsedDescription =
-        description;
-
-      if (
-        typeof description ===
-        "string"
-      ) {
-        try {
-          parsedDescription =
-            JSON.parse(
-              description
-            );
-        } catch (error) {
-          parsedDescription = {
-            about: description,
+      const parsedDescription =
+        parseJSON(
+          description,
+          {
+            about: "",
             itemDetails: "",
-          };
-        }
-      }
+          }
+        );
 
       product.description = {
         about:
@@ -1219,40 +2089,19 @@ exports.updateProduct = async (
       };
     }
 
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
     // VARIANTS
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
 
     if (
       variants !==
       undefined
     ) {
-      let parsedVariants =
-        variants;
-
-      if (
-        typeof variants ===
-        "string"
-      ) {
-        try {
-          parsedVariants =
-            JSON.parse(
-              variants
-            );
-        } catch (error) {
-          if (req.files) {
-            req.files.forEach(
-              deleteUploadedFile
-            );
-          }
-
-          return res.status(400).json({
-            success: false,
-            message:
-              "Invalid variants JSON",
-          });
-        }
-      }
+      const parsedVariants =
+        parseJSON(
+          variants,
+          null
+        );
 
       if (
         !Array.isArray(
@@ -1272,19 +2121,44 @@ exports.updateProduct = async (
         });
       }
 
-      // --------------------------------------------------------
-      // PREPARE VARIANTS
-      // --------------------------------------------------------
+      if (
+        parsedVariants.length ===
+        0
+      ) {
+        if (req.files) {
+          req.files.forEach(
+            deleteUploadedFile
+          );
+        }
+
+        return res.status(400).json({
+          success: false,
+          message:
+            "At least one variant is required",
+        });
+      }
+
+      // ------------------------------------------------------
+      // KEEP ORIGINAL VARIANTS FOR FILE CLEANUP
+      // ------------------------------------------------------
+
+      const oldVariants =
+        product.variants;
+
+      // ------------------------------------------------------
+      // PREPARE
+      // ------------------------------------------------------
 
       const preparedVariants =
         await prepareVariants(
           parsedVariants,
-          product.name
+          product.name,
+          oldVariants
         );
 
-      // --------------------------------------------------------
-      // CHECK DUPLICATE COLORS
-      // --------------------------------------------------------
+      // ------------------------------------------------------
+      // DUPLICATE COLORS
+      // ------------------------------------------------------
 
       const colors =
         preparedVariants.map(
@@ -1312,38 +2186,162 @@ exports.updateProduct = async (
         });
       }
 
-      // --------------------------------------------------------
-      // UPLOADED MEDIA
-      // --------------------------------------------------------
+      // ------------------------------------------------------
+      // MEDIA UPLOAD
+      // ------------------------------------------------------
+
+      if (
+        req.files &&
+        req.files.length > 0
+      ) {
+        const mediaColors =
+          parseMediaColors(
+            req.body.mediaColors,
+            req.files.length
+          );
+
+        attachUploadedMediaByColor({
+          variants:
+            preparedVariants,
+          files: req.files,
+          mediaColors,
+        });
+      }
+
+      // ------------------------------------------------------
+      // DELETE OLD MEDIA THAT WAS REMOVED
+      // ------------------------------------------------------
+
+      const newVariantMap =
+        new Map();
+
+      preparedVariants.forEach(
+        (variant) => {
+          newVariantMap.set(
+            String(
+              variant._id
+            ),
+            variant
+          );
+        }
+      );
+
+      oldVariants.forEach(
+        (oldVariant) => {
+          const newVariant =
+            newVariantMap.get(
+              String(
+                oldVariant._id
+              )
+            );
+
+          // ----------------------------------------------------
+          // VARIANT COMPLETELY REMOVED
+          // ----------------------------------------------------
+
+          if (!newVariant) {
+            deleteMediaArray(
+              oldVariant.media
+            );
+
+            return;
+          }
+
+          // ----------------------------------------------------
+          // MEDIA REMOVED FROM EXISTING VARIANT
+          // ----------------------------------------------------
+
+          const newMediaUrls =
+            new Set(
+              (
+                newVariant.media ||
+                []
+              ).map(
+                (item) =>
+                  String(
+                    item.imageURL
+                  )
+              )
+            );
+
+          (
+            oldVariant.media ||
+            []
+          ).forEach(
+            (oldMedia) => {
+              if (
+                oldMedia.imageURL &&
+                !newMediaUrls.has(
+                  String(
+                    oldMedia.imageURL
+                  )
+                )
+              ) {
+                deleteMediaFile(
+                  oldMedia.imageURL
+                );
+              }
+            }
+          );
+        }
+      );
+
+      product.variants =
+        preparedVariants;
+    } else if (
+      req.files &&
+      req.files.length > 0
+    ) {
+      // ------------------------------------------------------
+      // MEDIA ONLY UPDATE
+      //
+      // mediaColors tells us which existing color receives
+      // each uploaded file.
+      // ------------------------------------------------------
+
+      const mediaColors =
+        parseMediaColors(
+          req.body.mediaColors,
+          req.files.length
+        );
 
       const uploadedMedia =
         prepareUploadedMedia(
           req.files
         );
 
-      if (
-        uploadedMedia.length >
-        0
+      for (
+        let i = 0;
+        i <
+        uploadedMedia.length;
+        i++
       ) {
-        if (
-          preparedVariants.length ===
-          0
-        ) {
+        const color =
+          mediaColors[i];
+
+        const variant =
+          product.variants.find(
+            (item) =>
+              String(
+                item.color
+              ).toUpperCase() ===
+              color
+          );
+
+        if (!variant) {
           req.files.forEach(
             deleteUploadedFile
           );
 
-          return res.status(400).json({
+          return res.status(404).json({
             success: false,
             message:
-              "At least one color variant is required when uploading media",
+              `Variant color "${color}" not found`,
           });
         }
 
         if (
-          preparedVariants[0]
-            .media.length +
-            uploadedMedia.length >
+          variant.media.length >=
           10
         ) {
           req.files.forEach(
@@ -1353,94 +2351,26 @@ exports.updateProduct = async (
           return res.status(400).json({
             success: false,
             message:
-              "Maximum 10 media files are allowed for the first color variant",
+              `Maximum 10 media files are allowed for ${color}`,
           });
         }
 
-        preparedVariants[0].media =
-          [
-            ...preparedVariants[0]
-              .media,
-            ...uploadedMedia,
-          ];
+        variant.media.push(
+          uploadedMedia[i]
+        );
       }
-
-      // --------------------------------------------------------
-      // REPLACE VARIANTS
-      // --------------------------------------------------------
-
-      product.variants =
-        preparedVariants;
     }
 
-    // ----------------------------------------------------------
-    // MEDIA ONLY UPDATE
-    // ----------------------------------------------------------
-
-    else if (
-      req.files &&
-      req.files.length > 0
-    ) {
-      if (
-        product.variants.length ===
-        0
-      ) {
-        req.files.forEach(
-          deleteUploadedFile
-        );
-
-        return res.status(400).json({
-          success: false,
-          message:
-            "Product has no color variant",
-        });
-      }
-
-      const uploadedMedia =
-        prepareUploadedMedia(
-          req.files
-        );
-
-      const firstVariant =
-        product.variants[0];
-
-      if (
-        firstVariant.media.length +
-          uploadedMedia.length >
-        10
-      ) {
-        req.files.forEach(
-          deleteUploadedFile
-        );
-
-        return res.status(400).json({
-          success: false,
-          message:
-            "Maximum 10 media files are allowed for this color variant",
-        });
-      }
-
-      firstVariant.media.push(
-        ...uploadedMedia
-      );
-    }
-
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
     // SAVE
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
 
     await product.save();
 
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
-
     return res.status(200).json({
       success: true,
-
       message:
         "Product updated successfully",
-
       data: product,
     });
   } catch (error) {
@@ -1457,10 +2387,8 @@ exports.updateProduct = async (
 
     return res.status(500).json({
       success: false,
-
       message:
         "Failed to update product",
-
       error: error.message,
     });
   }
@@ -1480,12 +2408,8 @@ exports.deleteProduct = async (
       productId,
     } = req.params;
 
-    // ----------------------------------------------------------
-    // VALIDATE ID
-    // ----------------------------------------------------------
-
     if (
-      !mongoose.Types.ObjectId.isValid(
+      !isValidObjectId(
         productId
       )
     ) {
@@ -1495,10 +2419,6 @@ exports.deleteProduct = async (
           "Invalid product ID",
       });
     }
-
-    // ----------------------------------------------------------
-    // FIND PRODUCT
-    // ----------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -1514,23 +2434,29 @@ exports.deleteProduct = async (
       });
     }
 
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // DELETE PHYSICAL MEDIA
+    // --------------------------------------------------------
+
+    product.variants.forEach(
+      (variant) => {
+        deleteMediaArray(
+          variant.media
+        );
+      }
+    );
+
+    // --------------------------------------------------------
     // SOFT DELETE
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
 
     product.isDeleted = true;
-
     product.isActive = false;
 
     await product.save();
 
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
-
     return res.status(200).json({
       success: true,
-
       message:
         "Product deleted successfully",
     });
@@ -1542,10 +2468,8 @@ exports.deleteProduct = async (
 
     return res.status(500).json({
       success: false,
-
       message:
         "Failed to delete product",
-
       error: error.message,
     });
   }
@@ -1566,12 +2490,12 @@ exports.addVariantMedia = async (
       variantId,
     } = req.params;
 
-    // ----------------------------------------------------------
-    // VALIDATE PRODUCT ID
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // VALIDATE IDS
+    // --------------------------------------------------------
 
     if (
-      !mongoose.Types.ObjectId.isValid(
+      !isValidObjectId(
         productId
       )
     ) {
@@ -1588,12 +2512,8 @@ exports.addVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // VALIDATE VARIANT ID
-    // ----------------------------------------------------------
-
     if (
-      !mongoose.Types.ObjectId.isValid(
+      !isValidObjectId(
         variantId
       )
     ) {
@@ -1610,9 +2530,9 @@ exports.addVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // CHECK FILES
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // FILES
+    // --------------------------------------------------------
 
     if (
       !req.files ||
@@ -1625,9 +2545,9 @@ exports.addVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // FIND PRODUCT
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // PRODUCT
+    // --------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -1647,9 +2567,9 @@ exports.addVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // FIND VARIANT
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // VARIANT
+    // --------------------------------------------------------
 
     const variant =
       product.variants.id(
@@ -1668,9 +2588,9 @@ exports.addVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // MAXIMUM 10 MEDIA
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // MAX 10
+    // --------------------------------------------------------
 
     if (
       variant.media.length +
@@ -1683,6 +2603,7 @@ exports.addVariantMedia = async (
 
       return res.status(400).json({
         success: false,
+
         message:
           `Maximum 10 media files are allowed for ${variant.color}. ` +
           `Current: ${variant.media.length}, ` +
@@ -1690,18 +2611,14 @@ exports.addVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // PREPARE MEDIA
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // ADD MEDIA
+    // --------------------------------------------------------
 
     const newMedia =
       prepareUploadedMedia(
         req.files
       );
-
-    // ----------------------------------------------------------
-    // ADD MEDIA
-    // ----------------------------------------------------------
 
     variant.media.push(
       ...newMedia
@@ -1709,13 +2626,8 @@ exports.addVariantMedia = async (
 
     await product.save();
 
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
-
     return res.status(200).json({
       success: true,
-
       message:
         "Product media uploaded successfully",
 
@@ -1747,10 +2659,8 @@ exports.addVariantMedia = async (
 
     return res.status(500).json({
       success: false,
-
       message:
         "Failed to upload product media",
-
       error: error.message,
     });
   }
@@ -1772,12 +2682,12 @@ exports.deleteVariantMedia = async (
       mediaId,
     } = req.params;
 
-    // ----------------------------------------------------------
-    // VALIDATE PRODUCT ID
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // VALIDATION
+    // --------------------------------------------------------
 
     if (
-      !mongoose.Types.ObjectId.isValid(
+      !isValidObjectId(
         productId
       )
     ) {
@@ -1788,12 +2698,8 @@ exports.deleteVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // VALIDATE VARIANT ID
-    // ----------------------------------------------------------
-
     if (
-      !mongoose.Types.ObjectId.isValid(
+      !isValidObjectId(
         variantId
       )
     ) {
@@ -1804,12 +2710,8 @@ exports.deleteVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // VALIDATE MEDIA ID
-    // ----------------------------------------------------------
-
     if (
-      !mongoose.Types.ObjectId.isValid(
+      !isValidObjectId(
         mediaId
       )
     ) {
@@ -1820,9 +2722,9 @@ exports.deleteVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // FIND PRODUCT
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // PRODUCT
+    // --------------------------------------------------------
 
     const product =
       await Product.findOne({
@@ -1838,9 +2740,9 @@ exports.deleteVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // FIND VARIANT
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // VARIANT
+    // --------------------------------------------------------
 
     const variant =
       product.variants.id(
@@ -1855,16 +2757,16 @@ exports.deleteVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // FIND MEDIA
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // MEDIA
+    // --------------------------------------------------------
 
-    const media =
+    const mediaItem =
       variant.media.id(
         mediaId
       );
 
-    if (!media) {
+    if (!mediaItem) {
       return res.status(404).json({
         success: false,
         message:
@@ -1872,49 +2774,27 @@ exports.deleteVariantMedia = async (
       });
     }
 
-    // ----------------------------------------------------------
-    // DELETE PHYSICAL FILE
-    // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // DELETE FILE
+    // --------------------------------------------------------
 
-    if (media.imageURL) {
-      const relativePath =
-        media.imageURL.replace(
-          /^\/+/,
-          ""
-        );
+    const imageURL =
+      mediaItem.imageURL;
 
-      const absolutePath =
-        path.join(
-          process.cwd(),
-          relativePath
-        );
+    deleteMediaFile(
+      imageURL
+    );
 
-      if (
-        fs.existsSync(
-          absolutePath
-        )
-      ) {
-        fs.unlinkSync(
-          absolutePath
-        );
-      }
-    }
+    // --------------------------------------------------------
+    // REMOVE FROM MONGODB
+    // --------------------------------------------------------
 
-    // ----------------------------------------------------------
-    // DELETE MEDIA FROM MONGODB
-    // ----------------------------------------------------------
-
-    media.deleteOne();
+    mediaItem.deleteOne();
 
     await product.save();
 
-    // ----------------------------------------------------------
-    // RESPONSE
-    // ----------------------------------------------------------
-
     return res.status(200).json({
       success: true,
-
       message:
         "Product media deleted successfully",
 
@@ -1928,12 +2808,9 @@ exports.deleteVariantMedia = async (
 
     return res.status(500).json({
       success: false,
-
       message:
         "Failed to delete product media",
-
       error: error.message,
     });
   }
 };
-

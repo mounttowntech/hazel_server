@@ -1,4 +1,3 @@
-
 const express = require("express");
 
 const router = express.Router();
@@ -10,7 +9,9 @@ const router = express.Router();
 const {
   createBanner,
   getAllBanners,
+  getActiveBanners,
   getBannerById,
+  // getActiveBanners,
   updateBanner,
   deleteBanner,
 } = require("../controllers/bannerController");
@@ -25,14 +26,18 @@ const {
 
 // ==========================================================
 // CREATE BANNER
-// POST /api/banners
+// POST /api/banners/create
 // ==========================================================
 
-router.post( "/create", uploadBannerImage.single("image"), createBanner );
+router.post(
+  "/create",
+  uploadBannerImage.single("image"),
+  createBanner
+);
 
 // ==========================================================
 // GET ALL BANNERS
-// GET /api/banners
+// GET /api/banners/all
 // ==========================================================
 
 router.get(
@@ -41,7 +46,29 @@ router.get(
 );
 
 // ==========================================================
-// GET SINGLE BANNER
+// GET ACTIVE BANNERS
+// GET /api/banners/active
+// IMPORTANT: Must be before /:id
+// ==========================================================
+
+router.get(
+  "/active",
+  getActiveBanners
+);
+
+// ==========================================================
+// GET ACTIVE BANNERS
+// IMPORTANT: BEFORE /:id
+// GET /api/banners/active
+// ==========================================================
+
+// router.get(
+//   "/active",
+//   getActiveBanners
+// );
+
+// ==========================================================
+// GET BANNER BY ID
 // GET /api/banners/:id
 // ==========================================================
 
@@ -52,19 +79,23 @@ router.get(
 
 // ==========================================================
 // UPDATE BANNER
-// PUT /api/banners/:id
+// PUT /api/banners/update/:id
 // ==========================================================
-router.put( "/update/:id", uploadBannerImage.single("image"), updateBanner );
+
+router.put(
+  "/update/:id",
+  uploadBannerImage.single("image"),
+  updateBanner
+);
+
 // ==========================================================
 // DELETE BANNER
-// DELETE /api/banners/:id
+// DELETE /api/banners/delete/:id
 // ==========================================================
 
 router.delete(
   "/delete/:id",
   deleteBanner
 );
-
-
 
 module.exports = router;

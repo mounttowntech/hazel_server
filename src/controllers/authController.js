@@ -3,7 +3,8 @@ const { OAuth2Client } = require("google-auth-library");
 
 const User = require("../models/userModel");
 const OTP = require("../models/OTPModel");
-
+const generateOTP = require("../utils/generateOTP");
+const generateToken = require("../utils/generateToken");
 const otpService = require("../services/OTPService");
 
 // ============================================================
@@ -14,24 +15,24 @@ const googleClient = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID
 );
 
-// ============================================================
-// GENERATE JWT
-// ============================================================
+// // ============================================================
+// // GENERATE JWT
+// // ============================================================
 
-const generateToken = (user) => {
-  return jwt.sign(
-    {
-      id: user._id,
-      role: user.role,
-      mobileNumber: user.mobileNumber || null,
-      email: user.email || null,
-    },
-    process.env.JWT_SECRET,
-    {
-      expiresIn: "7d",
-    }
-  );
-};
+// const generateToken = (user) => {
+//   return jwt.sign(
+//     {
+//       id: user._id,
+//       role: user.role,
+//       mobileNumber: user.mobileNumber || null,
+//       email: user.email || null,
+//     },
+//     process.env.JWT_SECRET,
+//     {
+//       expiresIn: "7d",
+//     }
+//   );
+// };
 
 // ============================================================
 // NORMALIZE MOBILE NUMBER
